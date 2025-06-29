@@ -1,3 +1,5 @@
+"""Module defines the data models for the case management system."""
+
 from pydantic import BaseModel
 
 
