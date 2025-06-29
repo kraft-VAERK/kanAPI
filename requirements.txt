@@ -1,0 +1,5 @@
+pydantic
+uvicorn
+fastapi
+httpx
+faker
