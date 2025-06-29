@@ -1,4 +1,4 @@
 docker-compose.yml
-makefile
+Makefile
 Dockerfile
 pyproject.toml

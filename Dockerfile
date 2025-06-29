@@ -19,8 +19,10 @@ RUN apk add --no-cache --virtual .build-deps gcc musl-dev linux-headers libffi-d
 # Copy the rest of the application
 COPY . .
 
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 CMD [ "curl", "-f", "http://localhost:8000/health/live" ]
+
 # Expose the port the app runs on
 EXPOSE 8000
 
 # Command to run the application using Uvicorn
-CMD ["python", "main.py"]
+CMD ["python", "src/api/main.py", "prod"]
