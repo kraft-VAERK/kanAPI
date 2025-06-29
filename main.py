@@ -51,8 +51,6 @@ async def readiness_check():
 async def liveness_check():
     return http.HTTPStatus.OK
 
-
-
 fake = Faker()
 
 cases = CaseList(
