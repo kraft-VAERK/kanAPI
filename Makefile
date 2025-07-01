@@ -23,11 +23,11 @@ dev:
 		echo "Creating virtual environment..."; \
 		python3 -m venv venv; \
 	fi
-	@echo "Activating virtual environment and installing dependencies..."
 	@. venv/bin/activate && \
-		pip install -r requirements.txt && \
-		echo "Development environment ready. Run 'source venv/bin/activate' to activate in your current shell."
-
+		echo "Installing dependencies..." && \
+		pip install -q --upgrade pip && \
+		pip install -qr requirements.txt && \
+		echo "Development environment is ready, run 'make run' to start the application."
 docker-run:
 	@echo "Running Docker container..."
 	@docker compose up
