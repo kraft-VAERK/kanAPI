@@ -9,8 +9,17 @@ run:
 	@echo "Activating virtual environment and running application..."
 	@. venv/bin/activate && \
 		pip install -qr requirements.txt && \
-		python3 src/api/main.py dev
-
+		uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --log-level info
+run-prod:
+	@echo "Running the application in production mode..."
+	@if [ ! -d "venv" ]; then \
+		echo "Creating virtual environment..."; \
+		python3 -m venv venv; \
+	fi
+	@echo "Activating virtual environment and running application..."
+	@. venv/bin/activate && \
+		pip install -qr requirements.txt && \
+		uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level warning --no-access-log
 clean:
 	@echo "Cleaning up..."
 	@rm -rf venv
@@ -79,4 +88,4 @@ test:
 		exit 1; \
 	fi
 	@. venv/bin/activate && \
-		pytest tests --maxfail=1 --disable-warnings -v
+		PYTHONPATH=src pytest tests --maxfail=1 --disable-warnings -v

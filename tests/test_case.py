@@ -34,7 +34,19 @@ sys.modules["middleware.logging"] = middleware_module.logging
 # Create a test client
 client = TestClient(app)
 
+
 # Rest of your test code remains the same
+def test_health_endpoint() -> None:
+    """Test the health endpoint to ensure the API is operational."""
+    # Make a request to the health endpoint
+    for i in ["startup", "ready", "live"]:
+        print(f"Attempt at {i}: Testing health endpoint...")
+        # Make a request to the health endpoint
+
+        response = client.get(f"/api/v1/health/{i}")
+
+        # Check if the request was successful
+        assert response.status_code == 200
 
 
 def test_get_case_by_id() -> None:
