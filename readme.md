@@ -24,3 +24,11 @@ make lint           # Run Ruff linter on the code
 make lint-fix       # Run Ruff linter and auto-fix issues
 make test           # Run all tests with pytest
 ```
+
+# Docker image build
+
+```bash
+docker build \
+    -t kanAPI:$VERSION \
+    .
+```
