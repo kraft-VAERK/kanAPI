@@ -8,12 +8,6 @@ Frameworks:
 - Redis
 - Database to been chosen.
 
-# Makefile
-
-```
-make dev
-```
-
 # Makefile Commands
 
 ```bash
