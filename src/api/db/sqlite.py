@@ -88,6 +88,6 @@ class SQLiteConnection:
         self.connect()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: ANN001
         """Context manager exit."""
         self.disconnect()

@@ -1,5 +1,11 @@
+"""# test_case.py."""
+
 import os
 import sys
+
+from fastapi.testclient import TestClient
+
+from api.main import app
 
 # Add the src directory to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
@@ -13,7 +19,8 @@ middleware_module.logging = types.ModuleType("middleware.logging")
 
 
 # Create a dummy log_requests function
-async def dummy_log_requests(request, call_next):
+async def dummy_log_requests(request: any, call_next: any) -> any:
+    """Act as a dummy logging middleware that does nothing."""
     return await call_next(request)
 
 
@@ -22,9 +29,7 @@ sys.modules["middleware"] = middleware_module
 sys.modules["middleware.logging"] = middleware_module.logging
 
 # Now import from api
-from fastapi.testclient import TestClient
 
-from api.main import app
 
 # Create a test client
 client = TestClient(app)
