@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from middleware.logging import log_requests
 
+from .health.health import router as health_router
 from .v1.case.case import router as api_v1_router
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ app = FastAPI(title="kanAPI", description="API for managing cases")
 
 # Include routers
 app.include_router(api_v1_router, prefix="/api/v1", tags=["v1"])
+app.include_router(health_router, prefix="/api/v1", tags=["health"])
 
 
 @app.middleware("http")
