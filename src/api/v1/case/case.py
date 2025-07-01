@@ -8,7 +8,8 @@ import http
 
 from faker import Faker
 from fastapi import APIRouter, HTTPException
-from models import Case, CaseList
+
+from .models import Case, CaseList
 
 router = APIRouter(prefix="/case", tags=["case"])
 
@@ -25,6 +26,30 @@ async def read_case(case_id: str) -> Case:  # noqa: D103
         return case
     else:
         raise HTTPException(status_code=404, detail=f"Case with id {case_id} not found")
+
+
+@router.post(
+    "/create",
+    response_model=Case,
+    status_code=http.HTTPStatus.CREATED,
+    summary="Create a new case",
+)
+async def create_case(case: Case) -> Case:
+    """Create a new case.
+
+    Parameters
+    ----------
+    case : Case
+        The case object to create.
+
+    Returns
+    -------
+    Case
+        The created case object.
+
+    """
+    cases.cases.append(case)
+    return case
 
 
 async def get_case_by_id(case_id: str) -> Case | None:

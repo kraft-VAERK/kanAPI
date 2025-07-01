@@ -9,17 +9,18 @@ from typing import TYPE_CHECKING, Callable
 import uvicorn
 from fastapi import FastAPI, Request
 from middleware.logging import log_requests
-from v1 import router as api_v1_router
+
+from .v1.case.case import router as api_v1_router
 
 if TYPE_CHECKING:
     from starlette.responses import Response
 
 app = FastAPI()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+app = FastAPI(title="kanAPI", description="API for managing cases")
+
+# Include routers
+app.include_router(api_v1_router, prefix="/api/v1", tags=["v1"])
 
 
 @app.middleware("http")
@@ -30,8 +31,6 @@ async def logging_middleware(
     """Middleware to log HTTP requests with timing information."""
     return await log_requests(request, call_next)
 
-
-app.include_router(api_v1_router, prefix="/api/v1", tags=["v1"])
 
 if __name__ == "__main__":
     logging.info("Starting FastAPI application...")

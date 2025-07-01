@@ -1,28 +1,57 @@
 services:
-  traefik:
-    image: traefik:v2.9
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - project_network
+  # traefik:
+  #   image: traefik:v2.9
+  #   command:
+  #     - "--providers.docker=true"
+  #     - "--providers.docker.exposedbydefault=false"
+  #     - "--entrypoints.web.address=:80"
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   networks:
+  #     - project_network
 
-  webapp:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: webapp
+  # webapp:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: webapp
+  #   ports:
+  #     - "0.0.0.0:8000:8000" # Bind to all interfaces
+  #   networks:
+  #     - project_network
+  #   labels:
+  #     - "traefik.enable=true"
+  #     - "traefik.http.routers.webapp.rule=Host(`kanapi.local`)"
+  #     - "traefik.http.routers.webapp.entrypoints=web"
+  #     - "traefik.http.services.webapp.loadbalancer.server.port=8000"
+  # redis:
+  #   image: redis:8.2-m01-alpine3.22
+  #   container_name: redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - project_network
+
+  sqlite:
+    image: keinos/sqlite3:latest
+    container_name: sqlite
+    volumes:
+      - ./data:/data
     ports:
-      - "0.0.0.0:8000:8000" # Bind to all interfaces
+      - "8191:8191"
     networks:
       - project_network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.webapp.rule=Host(`kanapi.local`)"
-      - "traefik.http.routers.webapp.entrypoints=web"
-      - "traefik.http.services.webapp.loadbalancer.server.port=8000"
+    command: ["tail", "-f", "/dev/null"]
+
+volumes:
+  # redis-data:
+  #   driver: local
+  data:
+    driver: local
+networks:
+  project_network:
+    driver: bridge

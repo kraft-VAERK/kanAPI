@@ -71,3 +71,12 @@ lint-fix:
 	fi
 	@. venv/bin/activate && \
 		ruff check --fix ./src
+
+test:
+	@echo "Running Ruff linter with auto-fix..."
+	@if [ ! -d "venv" ]; then \
+		echo "Virtual environment not found. Please run 'make dev' first."; \
+		exit 1; \
+	fi
+	@. venv/bin/activate && \
+		pytest tests --maxfail=1 --disable-warnings -v

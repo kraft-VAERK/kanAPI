@@ -19,6 +19,7 @@ class Case(BaseModel):
     customer : str
         Name of the customer associated with the case.
 
+
     """
 
     id: str
