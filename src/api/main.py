@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable
 
 from fastapi import FastAPI, Request
 
+from .db.postgres import PostgresDB
 from .health.health import router as health_router
 from .middleware.logging import log_requests
 from .v1.case.case import router as api_v1_router
@@ -13,9 +14,9 @@ from .v1.case.case import router as api_v1_router
 if TYPE_CHECKING:
     from starlette.responses import Response
 
-app = FastAPI()
-
 app = FastAPI(title="kanAPI", description="API for managing cases")
+
+__all__ = ["PostgresDB"]
 
 # Include routers
 app.include_router(api_v1_router, prefix="/api/v1", tags=["v1"])

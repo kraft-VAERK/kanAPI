@@ -5,13 +5,26 @@ including functions to get cases by ID and generate fake case data.
 """
 
 import http
+import random
+import time
 
-from faker import Faker
 from fastapi import APIRouter, HTTPException
+from sqlalchemy.orm import Session
 
-from .models import Case, CaseList
+from ...db.postgres import PostgresDB
+from .models import Case, db_create_case, db_get_case
 
 router = APIRouter(prefix="/case", tags=["case"])
+
+# Database dependency
+def get_db() -> Session: # type: ignore
+    """Get database session."""
+    db = PostgresDB()
+    session = db.get_session()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 @router.get(
@@ -20,13 +33,14 @@ router = APIRouter(prefix="/case", tags=["case"])
     status_code=http.HTTPStatus.OK,
     summary="Get a case by ID",
 )
-async def read_case(case_id: str) -> Case:  # noqa: D103
-    case = await get_case_by_id(case_id)
-    if case:
-        return case
-    else:
-        raise HTTPException(status_code=404, detail=f"Case with id {case_id} not found")
-
+async def get_case(case_id: str) -> Case:
+    """Retrieve a case by its ID."""
+    if not case_id:
+        raise HTTPException(
+            status_code=http.HTTPStatus.BAD_REQUEST,
+            detail="Case ID is required.",
+        )
+    return db_get_case(case_id=case_id)
 
 @router.post(
     "/create",
@@ -35,54 +49,24 @@ async def read_case(case_id: str) -> Case:  # noqa: D103
     summary="Create a new case",
 )
 async def create_case(case: Case) -> Case:
-    """Create a new case.
-
-    Parameters
-    ----------
-    case : Case
-        The case object to create.
-
-    Returns
-    -------
-    Case
-        The created case object.
-
-    """
-    cases.cases.append(case)
-    return case
-
-
-async def get_case_by_id(case_id: str) -> Case | None:
-    """Retrieve a case by its ID.
-
-    Parameters
-    ----------
-    case_id : str
-        The unique identifier of the case to find.
-
-    Returns
-    -------
-    Case or None
-        The case object if found, None otherwise.
-
-    """
-    for case in cases:
-        if case.id == case_id:
-            return case
-    return None
-
-
-fake = Faker()
-
-cases = CaseList(
-    cases=[
-        Case(
-            id=str(i),
-            deleted=fake.boolean(chance_of_getting_true=20),
-            responsible_person=fake.name(),
-            status=fake.random_element(elements=("open", "closed", "pending")),
-            customer=fake.company(),
+    """Create a new case."""
+    case.id = str(random.randint(1000, 9999))  # Generate a random case ID
+    case.created_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+    case.deleted = False  # Default to not deleted
+    if not case.responsible_person:
+        raise HTTPException(
+            status_code=http.HTTPStatus.BAD_REQUEST,
+            detail="Responsible person is required.",
         )
-        for i in range(1, 21)
-    ],
-)
+    if not case.status:
+        raise HTTPException(
+            status_code=http.HTTPStatus.BAD_REQUEST,
+            detail="Status is required.",
+        )
+    if not case.customer:
+        raise HTTPException(
+            status_code=http.HTTPStatus.BAD_REQUEST,
+            detail="Customer is required.",
+        )
+    session = get_db()
+    return db_create_case(session=session, case=case)

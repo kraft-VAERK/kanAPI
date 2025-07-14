@@ -5,3 +5,5 @@ httpx
 faker
 ruff
 pytest
+psycopg2-binary
+sqlalchemy

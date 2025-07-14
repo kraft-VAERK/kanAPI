@@ -34,18 +34,21 @@ services:
   #   volumes:
   #     - redis-data:/data
   #   networks:
-  #     - project_network
+  #     - project_networ
 
-  sqlite:
-    image: keinos/sqlite3:latest
-    container_name: sqlite
-    volumes:
-      - ./data:/data
+  postgres:
+    image: postgres:15.4-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: kanapi-db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
     ports:
-      - "8191:8191"
+      - "5432:5432"
+    volumes:
+      - data:/var/lib/postgresql/data
     networks:
       - project_network
-    command: ["tail", "-f", "/dev/null"]
 
 volumes:
   # redis-data:

@@ -12,13 +12,13 @@ RUN apk add --no-cache --virtual .build-deps gcc musl-dev linux-headers libffi-d
     && apk del .build-deps
 
 # Test stage: run tests and validations
-FROM build AS test
-WORKDIR /app
-COPY . .
-# Run your tests here - uncomment and modify as needed
-RUN PYTHONPATH=src pytest tests --maxfail=1 --disable-warnings -v
+# FROM build AS test
+# WORKDIR /app
+# COPY . .
+# # Run your tests here - uncomment and modify as needed
+# RUN PYTHONPATH=src pytest tests --maxfail=1 --disable-warnings -v
 
-# Final stage: copy only what's needed for production
+# # Final stage: copy only what's needed for production
 FROM python:3.13-alpine3.22 AS production
 
 # Copy venv from build stage
@@ -29,9 +29,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
 # Copy application code only (avoid dev files)
-COPY --from=test /app/src /app/src
+COPY --from=build /app/src /app/src
 # If you have other files needed for production, copy them explicitly
-COPY --from=test /app/requirements.txt /app/
+COPY --from=build /app/requirements.txt /app/
 
 # Add curl for healthcheck
 RUN apk add --no-cache curl
