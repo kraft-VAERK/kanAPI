@@ -6,21 +6,20 @@ including functions to get cases by ID and generate fake case data.
 
 import http
 import random
-import time
 
-from fastapi import APIRouter, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException  # type: ignore
 
 from ...db.postgres import PostgresDB
 from .models import Case, db_create_case, db_get_case
 
 router = APIRouter(prefix="/case", tags=["case"])
 
+
 # Database dependency
-def get_db() -> Session: # type: ignore
+def get_db() -> None:  # type: ignore
     """Get database session."""
     db = PostgresDB()
-    session = db.get_session()
+    session = db.connect()
     try:
         yield session
     finally:
@@ -42,6 +41,7 @@ async def get_case(case_id: str) -> Case:
         )
     return db_get_case(case_id=case_id)
 
+
 @router.post(
     "/create",
     response_model=Case,
@@ -50,9 +50,14 @@ async def get_case(case_id: str) -> Case:
 )
 async def create_case(case: Case) -> Case:
     """Create a new case."""
+    try:
+        session = get_db()
+    except Exception as e:
+        raise HTTPException(
+            status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Database connection error: {e!s}",
+        ) from e
     case.id = str(random.randint(1000, 9999))  # Generate a random case ID
-    case.created_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
-    case.deleted = False  # Default to not deleted
     if not case.responsible_person:
         raise HTTPException(
             status_code=http.HTTPStatus.BAD_REQUEST,
@@ -68,5 +73,4 @@ async def create_case(case: Case) -> Case:
             status_code=http.HTTPStatus.BAD_REQUEST,
             detail="Customer is required.",
         )
-    session = get_db()
     return db_create_case(session=session, case=case)

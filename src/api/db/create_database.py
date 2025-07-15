@@ -1,8 +1,7 @@
 """Craete a PostgreSQL database for kanAPI."""
 
-
-import psycopg2
-from psycopg2 import sql
+import psycopg2  # type: ignore
+from psycopg2 import sql  # type: ignore
 
 from .config import load_config
 
@@ -25,8 +24,10 @@ def create_database(db_name: str) -> None:
             if not db_name.isidentifier():
                 raise ValueError(f"Invalid database name: {db_name}")
             # Create the database if it does not exist
-            cur.execute(sql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"),
-                            (db_name,))
+            cur.execute(
+                sql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"),
+                (db_name,),
+            )
 
     except psycopg2.Error as e:
         print(f"Error creating database: {e}")

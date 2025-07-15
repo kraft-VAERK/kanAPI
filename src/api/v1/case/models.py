@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 class CaseCreate(BaseModel):
     """Model for creating a new case."""
-    
+
     responsible_person: str
     status: str
     customer: str
@@ -23,6 +23,8 @@ class CaseUpdate(BaseModel):
     responsible_person: Optional[str] = None
     status: Optional[str] = None
     customer: Optional[str] = None
+
+
 class CaseDelete(BaseModel):
     """Model for deleting a case."""
 
@@ -52,23 +54,24 @@ class Case(BaseModel):
     """
 
     id: str
-    deleted: bool
+    deleted: bool = False
     responsible_person: str
     status: str
     customer: str
     created_at: str
     title: Optional[str] = None
 
+
 def db_create_case(db: Session, case: CaseCreate) -> Case:
     """Create a new case in the database.
-    
+
     Args:
         db: Database session
         case: Case data to create
-        
+
     Returns:
         The created case
-    
+
     """
     try:
         db_case = Case(**case.model_dump())
@@ -79,48 +82,52 @@ def db_create_case(db: Session, case: CaseCreate) -> Case:
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
-    
+
+
 def db_get_case(db: Session, case_id: int) -> Optional[Case]:
     """Get a case by ID.
-    
+
     Args:
         db: Database session
         case_id: ID of the case to retrieve
-        
+
     Returns:
         The case if found, None otherwise
-    
+
     """
     return db.query(Case).filter(Case.id == case_id).first()
 
+
 def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
     """Get all cases with pagination.
-    
+
     Args:
         db: Database session
         skip: Number of records to skip
         limit: Maximum number of records to return
-        
+
     Returns:
         List of cases
-        
+
     """
     return db.query(Case).offset(skip).limit(limit).all()
+
+
 def db_update_case(
     db: Session,
     case_id: int,
     case_update: CaseUpdate,
 ) -> Optional[Case]:
     """Update a case.
-    
+
     Args:
         db: Database session
         case_id: ID of the case to update
         case_update: Updated case data
-        
+
     Returns:
         The updated case if found, None otherwise
-        
+
     """
     try:
         db_case = db_get_case(db, case_id)
@@ -134,16 +141,18 @@ def db_update_case(
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+
+
 def db_delete_case(db: Session, case_id: int) -> bool:
     """Delete a case.
-    
+
     Args:
         db: Database session
         case_id: ID of the case to delete
-        
+
     Returns:
         True if the case was deleted, False otherwise
-    
+
     """
     try:
         db_case = db_get_case(db, case_id)
@@ -155,4 +164,3 @@ def db_delete_case(db: Session, case_id: int) -> bool:
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
-

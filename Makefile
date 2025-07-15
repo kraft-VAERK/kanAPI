@@ -23,8 +23,8 @@ run-prod:
 clean:
 	@echo "Cleaning up..."
 	@rm -rf venv
-	@find . -type f -name "*.pyc" -delete
-	@find . -type d -name "__pycache__" -exec rm -rf {} +
+	@find src -type f -name "*.pyc" -delete
+	@find src -type d -name "__pycache__" -exec rm -rf {} +
 	@echo "Cleanup complete."
 dev:
 	@echo "Setting up development environment..."
