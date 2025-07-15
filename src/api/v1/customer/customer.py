@@ -22,9 +22,10 @@ async def get_customer(customer_id: int) -> Customer:
 @router.post("/create", response_model=Customer)
 async def create_customer(
     customer: CustomerCreate,
-    db: Session = Depends(get_db),
+    db: Session = None,
 ) -> Customer:
     """Create a new customer."""
+    db = db or Depends(get_db)
     print(f"Creating customer: {customer}")
 
     try:
