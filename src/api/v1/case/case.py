@@ -7,15 +7,21 @@ including functions to get cases by ID and generate fake case data.
 import http
 import random
 
-from fastapi import APIRouter, HTTPException  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException  # type: ignore
+from sqlalchemy.orm import Session
+
+from src.api.db.database import get_db as get_db_session
 
 from ...db.postgres import PostgresDB
 from .models import Case, db_create_case, db_get_case
 
 router = APIRouter(prefix="/case", tags=["case"])
 
+# Create a reusable dependency
+db_dependency = Depends(get_db_session)
 
-# Database dependency
+
+# Legacy database dependency - keeping for reference
 def get_db() -> None:  # type: ignore
     """Get database session."""
     db = PostgresDB()
@@ -32,14 +38,14 @@ def get_db() -> None:  # type: ignore
     status_code=http.HTTPStatus.OK,
     summary="Get a case by ID",
 )
-async def get_case(case_id: str) -> Case:
+async def get_case(case_id: str, db: Session = db_dependency) -> Case:
     """Retrieve a case by its ID."""
     if not case_id:
         raise HTTPException(
             status_code=http.HTTPStatus.BAD_REQUEST,
             detail="Case ID is required.",
         )
-    return db_get_case(case_id=case_id)
+    return db_get_case(db=db, case_id=case_id)
 
 
 @router.post(
@@ -48,16 +54,8 @@ async def get_case(case_id: str) -> Case:
     status_code=http.HTTPStatus.CREATED,
     summary="Create a new case",
 )
-async def create_case(case: Case) -> Case:
+async def create_case(case: Case, db: Session = db_dependency) -> Case:
     """Create a new case."""
-    try:
-        session = get_db()
-    except Exception as e:
-        raise HTTPException(
-            status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Database connection error: {e!s}",
-        ) from e
-    case.id = str(random.randint(1000, 9999))  # Generate a random case ID
     if not case.responsible_person:
         raise HTTPException(
             status_code=http.HTTPStatus.BAD_REQUEST,
@@ -73,4 +71,6 @@ async def create_case(case: Case) -> Case:
             status_code=http.HTTPStatus.BAD_REQUEST,
             detail="Customer is required.",
         )
-    return db_create_case(session=session, case=case)
+    # Generate a random case ID
+    case.id = str(random.randint(1000, 9999))
+    return db_create_case(db=db, case=case)

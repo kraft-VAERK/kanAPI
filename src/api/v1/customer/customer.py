@@ -1,6 +1,5 @@
 """customer.py - FastAPI router for customer-related endpoints."""
 
-from faker import Faker
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -10,22 +9,19 @@ from .models import Customer, CustomerCreate, db_create_customer
 
 router = APIRouter(prefix="/customer", tags=["Customer"])
 
-fake = Faker()
 
-
-@router.get("/{customer_id}", response_model=Customer)
-async def get_customer(customer_id: int) -> Customer:
-    """Retrieve a customer by ID."""
-    return Customer(id=customer_id, name=fake.name(), email=fake.email())
+# @router.get("/{customer_id}", response_model=Customer)
+# async def get_customer(customer_id: int) -> Customer:
+#     """Retrieve a customer by ID."""
+#     return Customer(id=customer_id, name=fake.name(), email=fake.email())
 
 
 @router.post("/create", response_model=Customer)
 async def create_customer(
     customer: CustomerCreate,
-    db: Session = None,
+    db: Session = Depends(get_db),  # noqa: B008
 ) -> Customer:
     """Create a new customer."""
-    db = db or Depends(get_db)
     print(f"Creating customer: {customer}")
 
     try:

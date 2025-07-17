@@ -2,14 +2,31 @@
 
 from typing import List, Optional
 
-import psycopg2  # noqa: F401
+import pydantic
 from fastapi import HTTPException
-from pydantic import BaseModel
+from sqlalchemy import Column, ForeignKey, String
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.api.db.database import Base
 
-class CaseCreate(BaseModel):
+
+class CaseDB(Base):
+    """SQLAlchemy ORM model for Case table."""
+
+    __tablename__ = "cases"
+
+    id = Column(String, primary_key=True, index=True)
+    responsible_person = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    customer = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=True)
+    # Add foreign key relationship to users table
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+
+class CaseCreate(pydantic.BaseModel):
     """Model for creating a new case."""
 
     responsible_person: str
@@ -17,22 +34,23 @@ class CaseCreate(BaseModel):
     customer: str
 
 
-class CaseUpdate(BaseModel):
+class CaseUpdate(pydantic.BaseModel):
     """Model for updating an existing case."""
 
     responsible_person: Optional[str] = None
     status: Optional[str] = None
     customer: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
-class CaseDelete(BaseModel):
+class CaseDelete(pydantic.BaseModel):
     """Model for deleting a case."""
 
     id: str
     deleted: bool = True
 
 
-class Case(BaseModel):
+class Case(pydantic.BaseModel):
     """Represents a case in the system.
 
     Attributes
@@ -49,7 +67,8 @@ class Case(BaseModel):
         Name of the customer associated with the case.
     created_at : str
         Timestamp when the case was created.
-    title : str
+    updated_at : str | None
+        Timestamp when the case was last updated. Optional, as it may not be set initially.
 
     """
 
@@ -59,7 +78,7 @@ class Case(BaseModel):
     status: str
     customer: str
     created_at: str
-    title: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 def db_create_case(db: Session, case: CaseCreate) -> Case:
@@ -143,24 +162,24 @@ def db_update_case(
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
 
 
-def db_delete_case(db: Session, case_id: int) -> bool:
-    """Delete a case.
+# def db_delete_case(db: Session, case_id: int) -> bool:
+#     """Delete a case.
 
-    Args:
-        db: Database session
-        case_id: ID of the case to delete
+#     Args:
+#         db: Database session
+#         case_id: ID of the case to delete
 
-    Returns:
-        True if the case was deleted, False otherwise
+#     Returns:
+#         True if the case was deleted, False otherwise
 
-    """
-    try:
-        db_case = db_get_case(db, case_id)
-        if db_case:
-            db.delete(db_case)
-            db.commit()
-            return True
-        return False
-    except SQLAlchemyError as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+#     """
+#     try:
+#         db_case = db_get_case(db, case_id)
+#         if db_case:
+#             db.delete(db_case)
+#             db.commit()
+#             return True
+#         return False
+#     except SQLAlchemyError as e:
+#         db.rollback()
+#         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e

@@ -6,10 +6,13 @@ from typing import TYPE_CHECKING, Callable
 
 from fastapi import FastAPI, Request
 
+# Import db package to ensure __init__.py gets executed
+from .db.create_tables import create_tables
 from .health.health import router as health_router
 from .middleware.logging import log_requests
-from .v1.case.case import router as api_v1_router
-from .v1.customer import router as customer_router
+from .v1.case.case import router as case_v1_router
+from .v1.customer import router as customer_v1_rounter
+from .v1.user import router as user_v1_router
 
 if TYPE_CHECKING:
     from starlette.responses import Response
@@ -17,10 +20,14 @@ if TYPE_CHECKING:
 app = FastAPI(title="kanAPI", description="API for managing cases")
 prefix = "/api/v1"
 # Include routers
-app.include_router(api_v1_router, prefix=prefix, tags=["v1"])
 app.include_router(health_router, prefix=prefix, tags=["health"])
-app.include_router(customer_router, prefix=prefix, tags=["customer"])
+app.include_router(case_v1_router, prefix=prefix, tags=["v1", "case"])
+app.include_router(customer_v1_rounter, prefix=prefix, tags=["v1", "customer"])
+app.include_router(user_v1_router, prefix=prefix, tags=["v1", "user"])
 app.get("/", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})
+
+# Create database tables if they don't exist
+create_tables()
 
 
 @app.middleware("http")
