@@ -61,7 +61,9 @@ docker-all:
 	@$(MAKE) docker-build
 	@$(MAKE) docker-login
 	@$(MAKE) docker-push
-
+db:
+	@echo "Setting up database..."
+	@docker compose up -d
 
 lint:
 	@echo "Running Ruff linter..."

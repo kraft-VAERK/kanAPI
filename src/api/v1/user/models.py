@@ -81,6 +81,18 @@ class UserCreate(pydantic.BaseModel):
         from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
 
 
+class UserDelete(pydantic.BaseModel):
+    """Pydantic model for deleting a User."""
+
+    user_id: str | None = None
+    email: str | None = None
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
+
+
 def db_create_user(db: Session, user_create: UserCreate) -> "User":
     """Create a new user in the database.
 
@@ -109,6 +121,40 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
         return User.model_validate(user_db)
     except Exception as e:
         print(f"Error creating user: {e}")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def db_delete_user(db: Session, user_delete: UserDelete) -> bool:
+    """Delete a user from the database.
+
+    Args:
+        db: SQLAlchemy database session
+        user_delete: User deletion data containing either user_id or email
+
+    Returns:
+        bool: True if user was deleted, False if user was not found
+
+    """
+    if not user_delete.user_id and not user_delete.email:
+        raise ValueError("user_id or email must be provided")
+    if user_delete.email:
+        user_db = db.query(UserDB).filter(UserDB.email == user_delete.email).first()
+        if not user_db:
+            return False
+        print(f"User found by email: {user_db}")
+    try:
+        user_db = db.query(UserDB).filter(UserDB.id == user_delete.user_id).first()
+        if not user_db:
+            return False
+
+        db.delete(user_db)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Error deleting user: {e}")
         db.rollback()
         raise
     finally:

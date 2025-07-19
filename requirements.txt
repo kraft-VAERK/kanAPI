@@ -7,3 +7,6 @@ ruff
 pytest
 psycopg2-binary
 sqlalchemy
+PyJWT
+python-multipart
+python-dotenv
