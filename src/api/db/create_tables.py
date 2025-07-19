@@ -1,4 +1,4 @@
-# """Module creates the necessary tables in the PostgreSQL database."""
+"""Module creates the necessary tables in the PostgreSQL database."""
 
 # import sys
 # from pathlib import Path
