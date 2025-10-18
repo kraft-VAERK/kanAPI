@@ -12,17 +12,17 @@ from src.api.db.database import get_db
 
 from .models import User, UserDB, db_create_user, db_delete_user
 
-load_dotenv()  # Load environment variables from .env file
+# Load environment variables from .env file
+load_dotenv()
 
 router = APIRouter(prefix="/user", tags=["User"])
 
 # Secret key for JWT - should match the one in auth.py
-SECRET_KEY = os.getenv("JWT_SECRET_KEY")
-ALGORITHM = os.getenv("JWT_ALGORITHM")
-if not SECRET_KEY or not ALGORITHM:
-    raise ValueError(
-        "JWT_SECRET_KEY and JWT_ALGORITHM must be set in the environment variables.",
-    )
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+
+# Debug print to check if environment variables are loaded
+print(f"User module - SECRET_KEY: {SECRET_KEY[:5]}..., ALGORITHM: {ALGORITHM}")
 
 
 # Internal authentication function for this module

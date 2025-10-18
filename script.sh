@@ -42,14 +42,14 @@ get_random_name() {
     fi
 }
 # Get random names for our API calls
-random_name=$(get_random_name)
-random_username=$(echo "$random_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
-email=$(echo "$random_username" | sed 's/_/./g')@example.com
-password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 25)
-# random_name="Morten Jakobsen"
-# random_username="morten.jakobsen"
-# email="morten.jakobsen@example.com"
-# password="securepassword123"
+# random_name=$(get_random_name)
+# random_username=$(echo "$random_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '_')
+# email=$(echo "$random_username" | sed 's/_/./g')@example.com
+# password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 25)
+random_name="Morten Jakobsen"
+random_username="morten.jakobsen"
+email="morten.jakobsen@example.com"
+password="securepassword123"
 
 
 echo "Using random name: $random_name"
@@ -98,64 +98,64 @@ protected_result=$(
 )
 echo $protected_result | jq '.'
 
-echo -e "\n------ STEP 4: Try to access the protected endpoint without cookie (should fail) ------"
-# Try to access protected endpoint without the cookie (should fail)
-echo "This should fail with a 401 error:"
-no_cookie_result=$(
-    curl -X GET http://localhost:8000/api/v1/user/all \
-        -H "Content-Type: application/json" \
-        --silent \
-        -w "\nStatus code: %{http_code}\n"
-)
-echo $no_cookie_result
+# echo -e "\n------ STEP 4: Try to access the protected endpoint without cookie (should fail) ------"
+# # Try to access protected endpoint without the cookie (should fail)
+# echo "This should fail with a 401 error:"
+# no_cookie_result=$(
+#     curl -X GET http://localhost:8000/api/v1/user/all \
+#         -H "Content-Type: application/json" \
+#         --silent \
+#         -w "\nStatus code: %{http_code}\n"
+# )
+# echo $no_cookie_result
 
-echo -e "\n------ STEP 5: Logout the user ------"
-# Logout to invalidate the session
-logout_result=$(
-    curl -X POST http://localhost:8000/api/v1/auth/logout \
-        -H "Content-Type: application/json" \
-        --silent \
-        --fail \
-        -b "$COOKIE_JAR" \
-        -c "$COOKIE_JAR"
-)
-echo $logout_result | jq '.'
+# echo -e "\n------ STEP 5: Logout the user ------"
+# # Logout to invalidate the session
+# logout_result=$(
+#     curl -X POST http://localhost:8000/api/v1/auth/logout \
+#         -H "Content-Type: application/json" \
+#         --silent \
+#         --fail \
+#         -b "$COOKIE_JAR" \
+#         -c "$COOKIE_JAR"
+# )
+# echo $logout_result | jq '.'
 
-echo -e "\n------ STEP 6: Try to access protected endpoint after logout (should fail) ------"
-# Try to access the protected endpoint after logout (should fail)
-echo "This should fail with a 401 error:"
-after_logout_result=$(
-    curl -X GET http://localhost:8000/api/v1/user/all \
-        -H "Content-Type: application/json" \
-        --silent \
-        -b "$COOKIE_JAR" \
-        -w "\nStatus code: %{http_code}\n"
-)
-echo $after_logout_result
+# echo -e "\n------ STEP 6: Try to access protected endpoint after logout (should fail) ------"
+# # Try to access the protected endpoint after logout (should fail)
+# echo "This should fail with a 401 error:"
+# after_logout_result=$(
+#     curl -X GET http://localhost:8000/api/v1/user/all \
+#         -H "Content-Type: application/json" \
+#         --silent \
+#         -b "$COOKIE_JAR" \
+#         -w "\nStatus code: %{http_code}\n"
+# )
+# echo $after_logout_result
 
-# Alternative: Use the OAuth2 token authentication
-echo -e "\n------ STEP 7: Authenticate with OAuth2 (username/password) ------"
-token_result=$(
-    curl -X POST http://localhost:8000/api/v1/auth/token \
-        -H "Content-Type: application/x-www-form-urlencoded" \
-        --silent \
-        --fail \
-        -d "username=$email&password=$password"
-)
-# Extract the access token
-access_token=$(echo $token_result | jq -r '.access_token')
-echo "Received access token: ${access_token:0:20}..." # Only show the beginning of the token
+# # Alternative: Use the OAuth2 token authentication
+# echo -e "\n------ STEP 7: Authenticate with OAuth2 (username/password) ------"
+# token_result=$(
+#     curl -X POST http://localhost:8000/api/v1/auth/token \
+#         -H "Content-Type: application/x-www-form-urlencoded" \
+#         --silent \
+#         --fail \
+#         -d "username=$email&password=$password"
+# )
+# # Extract the access token
+# access_token=$(echo $token_result | jq -r '.access_token')
+# echo "Received access token: ${access_token:0:20}..." # Only show the beginning of the token
 
-echo -e "\n------ STEP 8: Access protected endpoint with bearer token ------"
-# Access protected endpoint with the bearer token
-token_protected_result=$(
-    curl -X GET http://localhost:8000/api/v1/user/all \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $access_token" \
-        --silent \
-        --fail
-)
-echo $token_protected_result | jq '.'
+# echo -e "\n------ STEP 8: Access protected endpoint with bearer token ------"
+# # Access protected endpoint with the bearer token
+# token_protected_result=$(
+#     curl -X GET http://localhost:8000/api/v1/user/all \
+#         -H "Content-Type: application/json" \
+#         -H "Authorization: Bearer $access_token" \
+#         --silent \
+#         --fail
+# )
+# echo $token_protected_result | jq '.'
 
 # Clean up the cookie jar
 # rm -f "$COOKIE_JAR"

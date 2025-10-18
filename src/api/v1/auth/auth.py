@@ -3,10 +3,12 @@
 This module provides functions for authenticating users and managing JWT tokens.
 """
 
+import os
 from datetime import datetime, timedelta
 from typing import Annotated, Optional
 
 import jwt
+from dotenv import load_dotenv
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -15,13 +17,15 @@ from sqlalchemy.orm import Session
 from src.api.db.database import get_db
 from src.api.v1.user.models import User, UserDB
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Router for authentication endpoints
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # Secret key for JWT token signing
-# In production, this should be stored securely (e.g., environment variable)
-SECRET_KEY = "your-secret-key-change-this-in-production"
-ALGORITHM = "HS256"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
 
 # OAuth2 scheme for token authentication
