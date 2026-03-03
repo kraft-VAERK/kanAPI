@@ -1,10 +1,12 @@
 """Module defines the data models for the case management system."""
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import pydantic
 from fastapi import HTTPException
-from sqlalchemy import Column, ForeignKey, String
+from sqlalchemy import Column, DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -16,14 +18,14 @@ class CaseDB(Base):
 
     __tablename__ = "cases"
 
-    id = Column(String, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     responsible_person = Column(String, nullable=False)
     status = Column(String, nullable=False)
     customer = Column(String, nullable=False)
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=True)
     # Add foreign key relationship to users table
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
 
 
 class CaseCreate(pydantic.BaseModel):
@@ -40,7 +42,7 @@ class CaseUpdate(pydantic.BaseModel):
     responsible_person: Optional[str] = None
     status: Optional[str] = None
     customer: Optional[str] = None
-    updated_at: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
 
 class CaseDelete(pydantic.BaseModel):
@@ -65,9 +67,9 @@ class Case(pydantic.BaseModel):
         Current status of the case.
     customer : str
         Name of the customer associated with the case.
-    created_at : str
+    created_at : datetime
         Timestamp when the case was created.
-    updated_at : str | None
+    updated_at : datetime | None
         Timestamp when the case was last updated. Optional, as it may not be set initially.
 
     """
@@ -77,33 +79,49 @@ class Case(pydantic.BaseModel):
     responsible_person: str
     status: str
     customer: str
-    created_at: str
-    updated_at: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
 
-def db_create_case(db: Session, case: CaseCreate) -> Case:
+def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) -> Case:
     """Create a new case in the database.
 
     Args:
         db: Database session
         case: Case data to create
+        user_id: ID of the user creating the case
+        case_id: Unique ID for the case
 
     Returns:
         The created case
 
     """
     try:
-        db_case = Case(**case.model_dump())
+        db_case = CaseDB(
+            id=case_id,
+            responsible_person=case.responsible_person,
+            status=case.status,
+            customer=case.customer,
+            created_at=datetime.now(timezone.utc),
+            user_id=user_id,
+        )
         db.add(db_case)
         db.commit()
         db.refresh(db_case)
-        return db_case
+        return Case(
+            id=db_case.id,
+            responsible_person=db_case.responsible_person,
+            status=db_case.status,
+            customer=db_case.customer,
+            created_at=db_case.created_at,
+            updated_at=db_case.updated_at,
+        )
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
 
 
-def db_get_case(db: Session, case_id: int) -> Optional[Case]:
+def db_get_case(db: Session, case_id: str) -> Optional[Case]:
     """Get a case by ID.
 
     Args:
@@ -114,7 +132,17 @@ def db_get_case(db: Session, case_id: int) -> Optional[Case]:
         The case if found, None otherwise
 
     """
-    return db.query(Case).filter(Case.id == case_id).first()
+    db_case = db.query(CaseDB).filter(CaseDB.id == case_id).first()
+    if db_case:
+        return Case(
+            id=db_case.id,
+            responsible_person=db_case.responsible_person,
+            status=db_case.status,
+            customer=db_case.customer,
+            created_at=db_case.created_at,
+            updated_at=db_case.updated_at,
+        )
+    return None
 
 
 def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
@@ -129,12 +157,23 @@ def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
         List of cases
 
     """
-    return db.query(Case).offset(skip).limit(limit).all()
+    db_cases = db.query(CaseDB).offset(skip).limit(limit).all()
+    return [
+        Case(
+            id=c.id,
+            responsible_person=c.responsible_person,
+            status=c.status,
+            customer=c.customer,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in db_cases
+    ]
 
 
 def db_update_case(
     db: Session,
-    case_id: int,
+    case_id: str,
     case_update: CaseUpdate,
 ) -> Optional[Case]:
     """Update a case.
@@ -149,17 +188,50 @@ def db_update_case(
 
     """
     try:
-        db_case = db_get_case(db, case_id)
+        db_case = db.query(CaseDB).filter(CaseDB.id == case_id).first()
         if db_case:
-            update_data = case_update.dict(exclude_unset=True)
+            update_data = case_update.model_dump(exclude_unset=True)
             for key, value in update_data.items():
                 setattr(db_case, key, value)
             db.commit()
             db.refresh(db_case)
-        return db_case
+            return Case(
+                id=db_case.id,
+                responsible_person=db_case.responsible_person,
+                status=db_case.status,
+                customer=db_case.customer,
+                created_at=db_case.created_at,
+                updated_at=db_case.updated_at,
+            )
+        return None
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+
+
+def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
+    """Get all cases belonging to a specific user.
+
+    Args:
+        db: Database session
+        user_id: ID of the user whose cases to retrieve
+
+    Returns:
+        List of cases owned by the user
+
+    """
+    db_cases = db.query(CaseDB).filter(CaseDB.user_id == user_id).all()
+    return [
+        Case(
+            id=c.id,
+            responsible_person=c.responsible_person,
+            status=c.status,
+            customer=c.customer,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in db_cases
+    ]
 
 
 # def db_delete_case(db: Session, case_id: int) -> bool:

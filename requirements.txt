@@ -10,3 +10,4 @@ sqlalchemy
 PyJWT
 python-multipart
 python-dotenv
+uuid7

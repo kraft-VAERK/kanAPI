@@ -5,31 +5,37 @@ including functions to get cases by ID and generate fake case data.
 """
 
 import http
-import random
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException  # type: ignore
 from sqlalchemy.orm import Session
+from uuid_extensions import uuid7
 
 from src.api.db.database import get_db as get_db_session
+from src.api.v1.auth.auth import get_current_user_from_cookie
+from src.api.v1.user.models import User
 
-from ...db.postgres import PostgresDB
-from .models import Case, db_create_case, db_get_case
+from .models import Case, CaseCreate, db_create_case, db_get_case, db_get_cases_by_user
 
 router = APIRouter(prefix="/case", tags=["case"])
 
-# Create a reusable dependency
-db_dependency = Depends(get_db_session)
+# Reusable annotated dependencies
+DbSession = Annotated[Session, Depends(get_db_session)]
+CurrentUser = Annotated[User, Depends(get_current_user_from_cookie)]
 
 
-# Legacy database dependency - keeping for reference
-def get_db() -> None:  # type: ignore
-    """Get database session."""
-    db = PostgresDB()
-    session = db.connect()
-    try:
-        yield session
-    finally:
-        session.close()
+@router.get(
+    "/",
+    response_model=list[Case],
+    status_code=http.HTTPStatus.OK,
+    summary="Get all cases for the current user",
+)
+async def get_my_cases(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[Case]:
+    """Get all cases belonging to the current authenticated user."""
+    return db_get_cases_by_user(db=db, user_id=current_user.id)
 
 
 @router.get(
@@ -38,14 +44,20 @@ def get_db() -> None:  # type: ignore
     status_code=http.HTTPStatus.OK,
     summary="Get a case by ID",
 )
-async def get_case(case_id: str, db: Session = db_dependency) -> Case:
+async def get_case(case_id: str, db: DbSession) -> Case:
     """Retrieve a case by its ID."""
     if not case_id:
         raise HTTPException(
             status_code=http.HTTPStatus.BAD_REQUEST,
             detail="Case ID is required.",
         )
-    return db_get_case(db=db, case_id=case_id)
+    case = db_get_case(db=db, case_id=case_id)
+    if not case:
+        raise HTTPException(
+            status_code=http.HTTPStatus.NOT_FOUND,
+            detail="Case not found.",
+        )
+    return case
 
 
 @router.post(
@@ -54,7 +66,11 @@ async def get_case(case_id: str, db: Session = db_dependency) -> Case:
     status_code=http.HTTPStatus.CREATED,
     summary="Create a new case",
 )
-async def create_case(case: Case, db: Session = db_dependency) -> Case:
+async def create_case(
+    case: CaseCreate,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> Case:
     """Create a new case."""
     if not case.responsible_person:
         raise HTTPException(
@@ -71,6 +87,6 @@ async def create_case(case: Case, db: Session = db_dependency) -> Case:
             status_code=http.HTTPStatus.BAD_REQUEST,
             detail="Customer is required.",
         )
-    # Generate a random case ID
-    case.id = str(random.randint(1000, 9999))
-    return db_create_case(db=db, case=case)
+    # Generate a unique case ID
+    case_id = str(uuid7())
+    return db_create_case(db=db, case=case, user_id=current_user.id, case_id=case_id)

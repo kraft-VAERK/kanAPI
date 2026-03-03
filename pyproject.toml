@@ -4,6 +4,7 @@ lint.ignore = ["W293"]
 lint.fixable = ["A", "B", "C", "E", "F", "I", "N", "UP", "W", "COM", "PT", "SIM", "TCH"]
 exclude = [
     ".bzr",
+    ".claude",
     ".direnv",
     ".eggs",
     ".git",

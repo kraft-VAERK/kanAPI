@@ -1,5 +1,9 @@
 PHONY: run source-venv docker-run docker-build docker-push docker-login docker-logout docker-all dev lint lint-fix
 
+PYTHON=venv/bin/python3
+PIP=venv/bin/pip
+UVICORN=venv/bin/uvicorn
+
 run:
 	@echo "Running the application..."
 	@if [ ! -d "venv" ]; then \
@@ -43,19 +47,8 @@ docker-run:
 
 docker-build:
 	@echo "Building Docker image..."
-	@docker build -t creditro.azurecr.io/fastapi:latest .
+	@docker build -t kanAPI:latest .
 
-docker-push:
-	@echo "Pushing Docker image to Azure Container Registry..."
-	@docker push creditro.azurecr.io/fastapi:latest
-
-docker-login:
-	@echo "Logging in to Azure Container Registry..."
-	@az acr login --name creditro
-
-docker-logout:
-	@echo "Logging out from Azure Container Registry..."
-	@az acr logout --name creditro
 docker-all:
 	@echo "Building and running Docker container..."
 	@$(MAKE) docker-build

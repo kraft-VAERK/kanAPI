@@ -1,10 +1,10 @@
 """Customer model for API v1."""
 
-import uuid
-
 import pydantic
 from sqlalchemy import Column, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session
+from uuid_extensions import uuid7
 
 from src.api.db.database import Base
 
@@ -15,7 +15,7 @@ class CustomerDB(Base):
 
     __tablename__ = "customers"
 
-    id = Column(String, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     name = Column(String, nullable=False)
     email = Column(String, nullable=False, unique=True)
     phone = Column(String, nullable=True)
@@ -62,7 +62,7 @@ def db_create_customer(db: Session, customer: CustomerCreate) -> Customer:
     try:
         # Create a new CustomerDB instance with UUID
         db_customer = CustomerDB(
-            id=str(uuid.uuid4()),
+            id=str(uuid7()),
             name=customer.name,
             email=customer.email,
             phone=customer.phone,

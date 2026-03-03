@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 # Import db package to ensure __init__.py gets executed
 # from .db.create_tables import create_tables
@@ -28,7 +29,8 @@ app.include_router(auth_v1_router, prefix=prefix, tags=["v1", "auth"])
 app.include_router(case_v1_router, prefix=prefix, tags=["v1", "case"])
 app.include_router(customer_v1_rounter, prefix=prefix, tags=["v1", "customer"])
 app.include_router(user_v1_router, prefix=prefix, tags=["v1", "user"])
-app.get("/", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})
+app.get("/api", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 # Create database tables if they don't exist
 create_tables()

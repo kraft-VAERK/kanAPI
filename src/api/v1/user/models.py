@@ -1,10 +1,10 @@
 """SQLAlchemy ORM model for User table."""
 
-import uuid
-
 import pydantic
-from sqlalchemy import Column, String
+from sqlalchemy import Boolean, Column, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session
+from uuid_extensions import uuid7
 
 from src.api.db.database import Base
 
@@ -14,12 +14,12 @@ class UserDB(Base):
 
     __tablename__ = "users"
 
-    id = Column(String, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     username = Column(String, nullable=False, unique=True)
     email = Column(String, nullable=False, unique=True)
     full_name = Column(String, nullable=True)
     password = Column(String, nullable=False)
-    is_active = Column(String, default=True)
+    is_active = Column(Boolean, default=True)
 
 
 class User(pydantic.BaseModel):
@@ -106,7 +106,7 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
     """
     try:
         user_db = UserDB(
-            id=str(uuid.uuid4()),
+            id=str(uuid7()),
             username=user_create.username,
             email=user_create.email,
             full_name=user_create.full_name,

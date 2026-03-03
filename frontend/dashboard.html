@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>kanAPI — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.5rem;
+      background: #fff;
+      border-bottom: 1px solid #ddd;
+    }
+
+    header span { font-weight: 600; }
+
+    header button {
+      padding: 0.4rem 0.9rem;
+      background: none;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    header button:hover { background: #f0f0f0; }
+
+    main { padding: 2rem 1.5rem; max-width: 900px; }
+
+    main h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 0.9rem;
+    }
+
+    th, td { padding: 0.65rem 1rem; text-align: left; }
+
+    thead { background: #f9f9f9; }
+
+    th { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; color: #555; }
+
+    tbody tr:not(:last-child) { border-bottom: 1px solid #eee; }
+
+    tbody tr:hover { background: #fafafa; }
+
+    td.id { font-family: monospace; font-size: 0.75rem; color: #888; }
+
+    #no-cases { color: #888; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <span id="username-display"></span>
+    <button id="logout-btn">Sign out</button>
+  </header>
+  <main>
+    <h2>My Cases</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Responsible</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="cases-tbody"></tbody>
+    </table>
+    <p id="no-cases" hidden>No cases found.</p>
+  </main>
+
+  <script>
+    const API = '/api/v1';
+
+    // Auth guard
+    fetch(`${API}/auth/me`, { credentials: 'include' })
+      .then(async r => {
+        if (!r.ok) { location.href = '/index.html'; return; }
+        const user = await r.json();
+        document.getElementById('username-display').textContent = user.username;
+        loadCases();
+      })
+      .catch(() => { location.href = '/index.html'; });
+
+    async function loadCases() {
+      const res = await fetch(`${API}/case/`, { credentials: 'include' });
+      if (!res.ok) return;
+
+      const cases = await res.json();
+      const tbody = document.getElementById('cases-tbody');
+
+      if (cases.length === 0) {
+        document.getElementById('no-cases').hidden = false;
+        return;
+      }
+
+      cases.forEach(c => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="id">${c.id}</td>
+          <td>${c.customer}</td>
+          <td>${c.responsible_person}</td>
+          <td>${c.status}</td>
+          <td>${new Date(c.created_at).toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
+      location.href = '/index.html';
+    });
+  </script>
+</body>
+</html>

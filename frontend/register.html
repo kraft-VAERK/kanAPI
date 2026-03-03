@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>kanAPI — Create account</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    h1 { font-size: 1.6rem; margin-bottom: 1.5rem; }
+
+    form {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 2rem;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    input {
+      padding: 0.5rem 0.7rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 0.95rem;
+    }
+
+    input:focus { outline: 2px solid #4a90d9; border-color: transparent; }
+
+    button {
+      padding: 0.55rem;
+      background: #222;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button:hover { background: #444; }
+
+    .error { color: #c0392b; font-size: 0.85rem; text-align: center; }
+
+    .switch {
+      font-size: 0.82rem;
+      text-align: center;
+      color: #666;
+    }
+
+    .switch a { color: #222; }
+  </style>
+</head>
+<body>
+  <h1>kanAPI</h1>
+  <form id="register-form" autocomplete="on">
+    <label>
+      Username
+      <input type="text" id="username" placeholder="johndoe" required autofocus>
+    </label>
+    <label>
+      Email
+      <input type="email" id="email" placeholder="you@example.com" required>
+    </label>
+    <label>
+      Password
+      <input type="password" id="password" placeholder="••••••••" required>
+    </label>
+    <button type="submit">Create account</button>
+    <p class="error" id="error" hidden></p>
+    <p class="switch">Already have an account? <a href="/index.html">Sign in</a></p>
+  </form>
+
+  <script>
+    const API = '/api/v1';
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('error');
+      errEl.hidden = true;
+
+      const email    = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch(`${API}/user/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          email,
+          password,
+        }),
+      });
+
+      if (res.ok) {
+        // Auto-login then go to dashboard
+        await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password }),
+        });
+        location.href = '/dashboard.html';
+      } else {
+        const err = await res.json().catch(() => ({}));
+        errEl.textContent = err.detail || 'Registration failed';
+        errEl.hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>
