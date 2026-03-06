@@ -70,7 +70,7 @@ async def update_case(
 
 - Use `http.HTTPStatus` constants, not raw integers
 - Validate required fields explicitly and raise `400` before hitting the DB
-- `case_id` is a UUID string generated with `str(uuid.uuid4())` at the endpoint layer
+- `case_id` is a UUID string generated with `str(uuid7())` at the endpoint layer (UUID v7, time-ordered; import from `uuid_extensions`)
 - `created_at` / `updated_at` are ISO 8601 strings: `datetime.now().isoformat()`
 - The `db_dependency` shorthand (`Depends(get_db_session)`) is already defined at module level — reuse it
 

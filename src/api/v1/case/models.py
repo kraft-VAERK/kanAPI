@@ -24,8 +24,16 @@ class CaseDB(Base):
     customer = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=True)
-    # Add foreign key relationship to users table
     user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    company_id = Column(UUID(as_uuid=False), ForeignKey("companies.id"), nullable=False)
+
+
+class DocumentInfo(pydantic.BaseModel):
+    """Metadata for a document stored in MinIO."""
+
+    name: str
+    size: int
+    last_modified: datetime
 
 
 class CaseCreate(pydantic.BaseModel):
@@ -34,6 +42,7 @@ class CaseCreate(pydantic.BaseModel):
     responsible_person: str
     status: str
     customer: str
+    company_id: str
 
 
 class CaseUpdate(pydantic.BaseModel):
@@ -79,6 +88,7 @@ class Case(pydantic.BaseModel):
     responsible_person: str
     status: str
     customer: str
+    company_id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -102,6 +112,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
             responsible_person=case.responsible_person,
             status=case.status,
             customer=case.customer,
+            company_id=case.company_id,
             created_at=datetime.now(timezone.utc),
             user_id=user_id,
         )
@@ -113,6 +124,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
             responsible_person=db_case.responsible_person,
             status=db_case.status,
             customer=db_case.customer,
+            company_id=db_case.company_id,
             created_at=db_case.created_at,
             updated_at=db_case.updated_at,
         )
@@ -139,6 +151,7 @@ def db_get_case(db: Session, case_id: str) -> Optional[Case]:
             responsible_person=db_case.responsible_person,
             status=db_case.status,
             customer=db_case.customer,
+            company_id=db_case.company_id,
             created_at=db_case.created_at,
             updated_at=db_case.updated_at,
         )
@@ -164,6 +177,7 @@ def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
             responsible_person=c.responsible_person,
             status=c.status,
             customer=c.customer,
+            company_id=c.company_id,
             created_at=c.created_at,
             updated_at=c.updated_at,
         )
@@ -200,6 +214,7 @@ def db_update_case(
                 responsible_person=db_case.responsible_person,
                 status=db_case.status,
                 customer=db_case.customer,
+                company_id=db_case.company_id,
                 created_at=db_case.created_at,
                 updated_at=db_case.updated_at,
             )
@@ -227,6 +242,7 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
             responsible_person=c.responsible_person,
             status=c.status,
             customer=c.customer,
+            company_id=c.company_id,
             created_at=c.created_at,
             updated_at=c.updated_at,
         )

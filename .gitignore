@@ -38,6 +38,7 @@ coverage.xml
 
 # Logs
 *.log
+logs/
 
 # Database
 *.db
@@ -53,3 +54,7 @@ ehthumbs.db
 Thumbs.db
 .ruff_cache/
 /data
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

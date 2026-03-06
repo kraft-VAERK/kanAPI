@@ -11,3 +11,5 @@ PyJWT
 python-multipart
 python-dotenv
 uuid7
+minio
+requests

@@ -1,7 +1,7 @@
 """SQLAlchemy ORM model for User table."""
 
 import pydantic
-from sqlalchemy import Boolean, Column, String
+from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
@@ -20,6 +20,8 @@ class UserDB(Base):
     full_name = Column(String, nullable=True)
     password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
+    parent_id = Column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
 
 
 class User(pydantic.BaseModel):
@@ -34,6 +36,8 @@ class User(pydantic.BaseModel):
     full_name: str | None = None
     password: str | None = None
     is_active: bool = True
+    is_admin: bool = False
+    parent_id: str | None = None
 
     class Config:
         """Pydantic config."""
@@ -74,6 +78,8 @@ class UserCreate(pydantic.BaseModel):
     email: str
     password: str
     full_name: str | None = None
+    is_admin: bool = False
+    parent_id: str | None = None
 
     class Config:
         """Pydantic config."""
@@ -112,6 +118,8 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
             full_name=user_create.full_name,
             password=User.hash_password(User, user_create.password),
             is_active=True,
+            is_admin=user_create.is_admin,
+            parent_id=user_create.parent_id,
         )
 
         db.add(user_db)
