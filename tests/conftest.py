@@ -18,27 +18,26 @@ from src.api.v1.case.models import CaseDB  # noqa: E402, F401
 from src.api.v1.company.models import CompanyDB  # noqa: E402, F401
 from src.api.v1.user.models import UserDB  # noqa: E402, F401
 
-SQLITE_URL = 'sqlite:///:memory:'
+SQLITE_URL = "sqlite:///:memory:"
 
 
-@pytest.fixture(scope='session')
-def test_engine():
+@pytest.fixture(scope="session")
+def test_engine():  # noqa ANN001
     """Single in-memory SQLite engine for the whole test session."""
-    engine = create_engine(SQLITE_URL, connect_args={'check_same_thread': False})
+    engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
     # Enable FK enforcement in SQLite (off by default)
-    event.listen(engine, 'connect', lambda c, _: c.execute('PRAGMA foreign_keys=ON'))
+    event.listen(engine, "connect", lambda c, _: c.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
 
 
-@pytest.fixture()
-def db(test_engine):
+@pytest.fixture
+def db(test_engine):  # noqa ANN001
     """Function-scoped DB session that rolls back after each test."""
     connection = test_engine.connect()
     transaction = connection.begin()
-    Session = sessionmaker(bind=connection)
-    session = Session()
+    session = sessionmaker(bind=connection)
     yield session
     session.close()
     transaction.rollback()

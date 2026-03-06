@@ -24,7 +24,7 @@ from src.api.v1.user.models import User, UserDB
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 
-def _make_user(db, *, uid, username, is_admin, parent_id=None):
+def _make_user(db, *, uid, username, is_admin, parent_id=None):  # noqa ANN001
     """Insert a UserDB row with the given attributes and return the ORM instance."""
     row = UserDB(
         id=uid,
@@ -41,7 +41,7 @@ def _make_user(db, *, uid, username, is_admin, parent_id=None):
     return row
 
 
-def _make_company(db):
+def _make_company(db):  # noqa ANN001
     """Insert a minimal CompanyDB row and return its UUID string."""
     cid = str(uuid.uuid4())
     db.add(CompanyDB(id=cid, name="Test Co", created_at=datetime.now(timezone.utc)))
@@ -49,7 +49,7 @@ def _make_company(db):
     return cid
 
 
-def _make_case(db, *, cid, user_id, company_id, customer="Acme"):
+def _make_case(db, *, cid, user_id, company_id, customer="Acme"):  # noqa ANN001
     """Insert a CaseDB row owned by user_id and return the ORM instance."""
     row = CaseDB(
         id=cid,
@@ -65,7 +65,7 @@ def _make_case(db, *, cid, user_id, company_id, customer="Acme"):
     return row
 
 
-def _as_user(row):
+def _as_user(row):  # noqa ANN001
     """Convert a UserDB ORM row to the User Pydantic model used by auth."""
     return User(
         id=row.id,
@@ -78,7 +78,7 @@ def _as_user(row):
 
 
 @pytest.fixture
-def scenario(db):
+def scenario(db):  # noqa ANN001
     """Create the full user/case hierarchy and yield named references."""
     company_id = _make_company(db)
 
@@ -110,13 +110,13 @@ def scenario(db):
 # ─── Super admin ──────────────────────────────────────────────────────────────
 
 
-def test_super_admin_can_access_company_a_case(scenario):
+def test_super_admin_can_access_company_a_case(scenario):  # noqa ANN001
     """Super admin is allowed to access any case regardless of company."""
     s = scenario
     _authorize_case_access(s["db"], s["case_a1"], _as_user(s["super_admin"]))
 
 
-def test_super_admin_can_access_company_b_case(scenario):
+def test_super_admin_can_access_company_b_case(scenario):  # noqa ANN001
     """Super admin can access cases from a different company than company_a."""
     s = scenario
     _authorize_case_access(s["db"], s["case_b1"], _as_user(s["super_admin"]))
@@ -125,19 +125,19 @@ def test_super_admin_can_access_company_b_case(scenario):
 # ─── Company admin ────────────────────────────────────────────────────────────
 
 
-def test_company_a_admin_can_access_own_sub_user_case(scenario):
+def test_company_a_admin_can_access_own_sub_user_case(scenario):  # noqa ANN001
     """Company admin can access a case owned by a direct sub-user."""
     s = scenario
     _authorize_case_access(s["db"], s["case_a1"], _as_user(s["company_a"]))
 
 
-def test_company_a_admin_can_access_all_sub_users_in_company(scenario):
+def test_company_a_admin_can_access_all_sub_users_in_company(scenario):  # noqa ANN001
     """Company admin can access cases owned by any sub-user in their company."""
     s = scenario
     _authorize_case_access(s["db"], s["case_a2"], _as_user(s["company_a"]))
 
 
-def test_company_a_admin_cannot_access_company_b_case(scenario):
+def test_company_a_admin_cannot_access_company_b_case(scenario):  # noqa ANN001
     """Company admin is denied access to cases belonging to a different company."""
     s = scenario
     with pytest.raises(HTTPException) as exc:
@@ -145,7 +145,7 @@ def test_company_a_admin_cannot_access_company_b_case(scenario):
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 
-def test_company_b_admin_cannot_access_company_a_case(scenario):
+def test_company_b_admin_cannot_access_company_a_case(scenario):  # noqa ANN001
     """Company B admin cannot cross company boundaries to access company A's cases."""
     s = scenario
     with pytest.raises(HTTPException) as exc:
@@ -156,19 +156,19 @@ def test_company_b_admin_cannot_access_company_a_case(scenario):
 # ─── Regular user ─────────────────────────────────────────────────────────────
 
 
-def test_user_can_access_own_case(scenario):
+def test_user_can_access_own_case(scenario):  # noqa ANN001
     """A regular user can always access their own case."""
     s = scenario
     _authorize_case_access(s["db"], s["case_a1"], _as_user(s["user_a1"]))
 
 
-def test_user_can_access_colleague_case_same_company(scenario):
+def test_user_can_access_colleague_case_same_company(scenario):  # noqa ANN001
     """user_a1 can read a case owned by user_a2 (same company)."""
     s = scenario
     _authorize_case_access(s["db"], s["case_a2"], _as_user(s["user_a1"]))
 
 
-def test_user_cannot_access_case_from_other_company(scenario):
+def test_user_cannot_access_case_from_other_company(scenario):  # noqa ANN001
     """A regular user cannot access a case owned by a user in a different company."""
     s = scenario
     with pytest.raises(HTTPException) as exc:
@@ -176,7 +176,7 @@ def test_user_cannot_access_case_from_other_company(scenario):
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 
-def test_user_b_cannot_access_company_a_case(scenario):
+def test_user_b_cannot_access_company_a_case(scenario):  # noqa ANN001
     """user_b1 is denied access to a case owned by a user in company A."""
     s = scenario
     with pytest.raises(HTTPException) as exc:
@@ -187,7 +187,7 @@ def test_user_b_cannot_access_company_a_case(scenario):
 # ─── _get_case_db_or_404 ─────────────────────────────────────────────────────
 
 
-def test_get_case_db_returns_row_when_found(scenario):
+def test_get_case_db_returns_row_when_found(scenario):  # noqa ANN001
     """Returns the CaseDB row when the case ID exists."""
     s = scenario
     row = _get_case_db_or_404(s["db"], s["case_a1"].id)
@@ -195,7 +195,7 @@ def test_get_case_db_returns_row_when_found(scenario):
     assert row.user_id == s["user_a1"].id
 
 
-def test_get_case_db_raises_404_when_not_found(scenario):
+def test_get_case_db_raises_404_when_not_found(scenario):  # noqa ANN001
     """Raises 404 when no case exists for the given ID."""
     s = scenario
     with pytest.raises(HTTPException) as exc:

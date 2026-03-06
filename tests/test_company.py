@@ -32,7 +32,7 @@ from src.api.v1.user.models import User, UserDB
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _make_user(db, *, username, is_admin, parent_id=None):
+def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
     """Insert a UserDB row and return its UUID string."""
     uid = str(uuid.uuid4())
     db.add(
@@ -51,7 +51,7 @@ def _make_user(db, *, username, is_admin, parent_id=None):
     return uid
 
 
-def _make_company(db, *, name, owner_id=None):
+def _make_company(db, *, name, owner_id=None):  # noqa ANN001
     """Insert a CompanyDB row and return its UUID string."""
     cid = str(uuid.uuid4())
     db.add(
@@ -67,7 +67,7 @@ def _make_company(db, *, name, owner_id=None):
     return cid
 
 
-def _as_user(db, uid):
+def _as_user(db, uid):  # noqa ANN001
     """Load a UserDB row by ID and return a Pydantic User instance."""
     row = db.query(UserDB).filter(UserDB.id == uid).first()
     return User(
