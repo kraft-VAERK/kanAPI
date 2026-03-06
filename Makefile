@@ -74,7 +74,12 @@ db:
 seed:
 	@echo "Seeding database..."
 	@if [ ! -d "venv" ]; then echo "Run 'make dev' first."; exit 1; fi
-	@. venv/bin/activate && PYTHONPATH=src python -m src.api.db.seed
+	@. venv/bin/activate && PYTHONPATH=. python3 src/api/db/seed.py
+
+seed-fga:
+	@echo "Creating OpenFGA store and writing authorization model..."
+	@if [ ! -d "venv" ]; then echo "Run 'make dev' first."; exit 1; fi
+	@. venv/bin/activate && PYTHONPATH=. python3 src/api/db/seed_fga.py
 
 lint:
 	@echo "Running Ruff linter..."

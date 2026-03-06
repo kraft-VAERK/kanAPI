@@ -65,6 +65,52 @@ services:
     networks:
       - project_network
 
+  openfga-db:
+    image: postgres:17
+    container_name: openfga-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: openfga
+    ports:
+      - "5433:5432"
+    networks:
+      - project_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  openfga-migrate:
+    image: openfga/openfga:latest
+    container_name: openfga-migrate
+    depends_on:
+      openfga-db:
+        condition: service_healthy
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://postgres:password@openfga-db:5432/openfga?sslmode=disable"
+    networks:
+      - project_network
+
+  openfga:
+    image: openfga/openfga:latest
+    container_name: openfga
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: "postgres://postgres:password@openfga-db:5432/openfga?sslmode=disable"
+    command: run
+    networks:
+      - project_network
+
 volumes:
   # redis-data:
   #   driver: local

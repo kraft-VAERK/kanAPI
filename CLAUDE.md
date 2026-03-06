@@ -6,25 +6,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 make dev          # Create venv and install dependencies
-make run          # Run the app (dev, with --reload)
+make run          # Run backend + frontend dev server in background (logs/backend.log, logs/frontend.log)
 make run-prod     # Run the app (production, 4 workers)
-make db           # Start PostgreSQL via docker compose (detached)
+make db           # Start all Docker services: PostgreSQL, MinIO, OpenFGA (detached)
+make seed         # Wipe and re-seed PostgreSQL with test users/cases/documents
+make seed-fga     # Create OpenFGA store + write authorization model (prints FGA_STORE_ID, FGA_MODEL_ID)
 make lint         # Run Ruff linter
 make lint-fix     # Run Ruff linter with auto-fix
-make test         # Run pytest (sets PYTHONPATH=src)
+make test         # Run pytest (unit + integration, excludes live tests)
 make frontend     # npm install + vite build → frontend/dist/
-make clean        # Remove venv and __pycache__
+make clean        # Kill ports 8000/5173, remove venv and __pycache__
 ```
 
 Run a single test:
 ```bash
-. venv/bin/activate && PYTHONPATH=src pytest tests/path/to/test.py::test_name -v
+venv/bin/pytest tests/path/to/test.py::test_name -v
+```
+
+Run live integration tests (requires full stack):
+```bash
+venv/bin/pytest tests/test_live.py -v
 ```
 
 Frontend dev server (proxies /api to localhost:8000):
 ```bash
 cd frontend && npm run dev
 ```
+
+### First-time setup
+
+```bash
+make dev          # install deps
+make db           # start docker services
+make seed-fga     # prints FGA_STORE_ID and FGA_MODEL_ID — export them:
+export FGA_API_URL=http://localhost:8080
+export FGA_STORE_ID=<from seed-fga output>
+export FGA_MODEL_ID=<from seed-fga output>
+make seed         # populate DB with test data
+make run          # start backend + frontend
+```
+
+### Seeded credentials (after `make seed`)
+
+| Email | Password | Role |
+|-------|----------|------|
+| `superadmin@kanapi.dev` | `super123` | Super admin |
+| `admin@acme.dev` | `acme123` | Company admin (Acme) |
+| `admin@globex.dev` | `globex123` | Company admin (Globex) |
 
 ## Architecture
 
@@ -62,6 +90,10 @@ kanAPI/
 
 Protected endpoints use `Depends(get_current_user_from_cookie)` from `src/api/v1/auth/auth.py`. Passwords are hashed with SHA-256 in `User.hash_password()`.
 
+**Authorization** — OpenFGA (relationship-based). All case-level permission checks go through `src/api/v1/auth/fga.py`. The OpenFGA server runs in Docker (port 8080, playground at 3000). Three env vars required: `FGA_API_URL`, `FGA_STORE_ID`, `FGA_MODEL_ID`. Run `make seed-fga` once to create the store and model, then export the printed IDs.
+
+Authorization model relations for `case`: `creator`, `assignee`, `viewer`, `editor`, `deleter`. Creators implicitly have all relations. Company members get `viewer` access.
+
 ## Adding a New Case Endpoint
 
 **Step 1 — add a `db_*` function to `models.py`:**
@@ -96,15 +128,35 @@ async def update_case(
 - Use `http.HTTPStatus` constants, not raw integers
 - `case_id` = `str(uuid7())` at endpoint layer (UUID v7, time-ordered; from `uuid_extensions`)
 - Timestamps = `datetime.now().isoformat()`
-- Reuse the `db_dependency` shorthand (`Depends(get_db_session)`) defined at module level
-- All endpoints require `Depends(get_current_user_from_cookie)` — no public endpoints on case routes
+- Reuse the `DbSession` and `CurrentUser` annotated dependencies defined at module level in `case.py`
+- All case endpoints require `Depends(get_current_user_from_cookie)` — no public endpoints on case routes
+- Authorization uses OpenFGA — use `Depends(require_permission('<relation>'))` on each endpoint, and call `await write_tuple(...)` after creating a resource
+
+**OpenFGA wiring for new case endpoints:**
+```python
+# Read endpoint — check viewer
+@router.get('/{case_id}', ...)
+async def get_case(case_id: str, db: DbSession, _auth=Depends(require_permission('viewer'))) -> Case:
+    ...
+
+# Write endpoint — check editor, or write creator tuple on create
+@router.post('/create', ...)
+async def create_case(case: CaseCreate, db: DbSession, current_user: CurrentUser) -> Case:
+    case_id = str(uuid7())
+    result = db_create_case(db=db, case=case, user_id=current_user.id, case_id=case_id)
+    await write_tuple(current_user.id, 'creator', 'case', case_id)
+    return result
+```
 
 **Currently implemented endpoints:**
 
-| Method | Path | Auth |
-|--------|------|------|
-| GET | `/api/v1/case/{case_id}` | No |
-| POST | `/api/v1/case/create` | Yes |
+| Method | Path | OpenFGA relation |
+|--------|------|-----------------|
+| GET | `/api/v1/case/` | viewer (batch_check filtered) |
+| GET | `/api/v1/case/{case_id}` | viewer |
+| POST | `/api/v1/case/create` | writes `creator` tuple |
+| GET | `/api/v1/case/{case_id}/documents` | viewer |
+| GET | `/api/v1/case/{case_id}/documents/{filename}` | viewer |
 
 DB functions available but not yet wired: `db_get_cases`, `db_update_case`
 

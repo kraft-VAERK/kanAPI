@@ -37,7 +37,7 @@ def db(test_engine):  # noqa ANN001
     """Function-scoped DB session that rolls back after each test."""
     connection = test_engine.connect()
     transaction = connection.begin()
-    session = sessionmaker(bind=connection)
+    session = sessionmaker(bind=connection)()
     yield session
     session.close()
     transaction.rollback()

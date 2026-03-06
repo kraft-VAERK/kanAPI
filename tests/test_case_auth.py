@@ -1,4 +1,4 @@
-"""Tests for case-level authorization logic (_authorize_case_access).
+"""Tests for case-level authorization via OpenFGA.
 
 Hierarchy used across all tests:
   super_admin  (is_admin=True,  parent_id=None)
@@ -7,16 +7,22 @@ Hierarchy used across all tests:
   │   └── user_a2  (is_admin=False, parent_id=company_a.id)  ← owns case_a2
   └── company_b  (is_admin=True,  parent_id=super_admin.id)
       └── user_b1  (is_admin=False, parent_id=company_b.id)  ← owns case_b1
+
+Authorization is delegated to OpenFGA. These tests verify:
+  - _get_case_db_or_404 (still a local helper)
+  - require_permission dependency raises 403 when OpenFGA denies access
+  - require_permission dependency passes when OpenFGA grants access
 """
 
 import http
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
-from src.api.v1.case.case import _authorize_case_access, _get_case_db_or_404
+from src.api.v1.case.case import _get_case_db_or_404
 from src.api.v1.case.models import CaseDB
 from src.api.v1.company.models import CompanyDB
 from src.api.v1.user.models import User, UserDB
@@ -79,7 +85,7 @@ def _as_user(row):  # noqa ANN001
 
 @pytest.fixture
 def scenario(db):  # noqa ANN001
-    """Create the full user/case hierarchy and yield named references."""
+    """Create the full user/case hierarchy and return named references."""
     company_id = _make_company(db)
 
     super_admin = _make_user(db, uid=str(uuid.uuid4()), username="superadmin", is_admin=True)
@@ -107,84 +113,7 @@ def scenario(db):  # noqa ANN001
     }
 
 
-# ─── Super admin ──────────────────────────────────────────────────────────────
-
-
-def test_super_admin_can_access_company_a_case(scenario):  # noqa ANN001
-    """Super admin is allowed to access any case regardless of company."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_a1"], _as_user(s["super_admin"]))
-
-
-def test_super_admin_can_access_company_b_case(scenario):  # noqa ANN001
-    """Super admin can access cases from a different company than company_a."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_b1"], _as_user(s["super_admin"]))
-
-
-# ─── Company admin ────────────────────────────────────────────────────────────
-
-
-def test_company_a_admin_can_access_own_sub_user_case(scenario):  # noqa ANN001
-    """Company admin can access a case owned by a direct sub-user."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_a1"], _as_user(s["company_a"]))
-
-
-def test_company_a_admin_can_access_all_sub_users_in_company(scenario):  # noqa ANN001
-    """Company admin can access cases owned by any sub-user in their company."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_a2"], _as_user(s["company_a"]))
-
-
-def test_company_a_admin_cannot_access_company_b_case(scenario):  # noqa ANN001
-    """Company admin is denied access to cases belonging to a different company."""
-    s = scenario
-    with pytest.raises(HTTPException) as exc:
-        _authorize_case_access(s["db"], s["case_b1"], _as_user(s["company_a"]))
-    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
-
-
-def test_company_b_admin_cannot_access_company_a_case(scenario):  # noqa ANN001
-    """Company B admin cannot cross company boundaries to access company A's cases."""
-    s = scenario
-    with pytest.raises(HTTPException) as exc:
-        _authorize_case_access(s["db"], s["case_a1"], _as_user(s["company_b"]))
-    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
-
-
-# ─── Regular user ─────────────────────────────────────────────────────────────
-
-
-def test_user_can_access_own_case(scenario):  # noqa ANN001
-    """A regular user can always access their own case."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_a1"], _as_user(s["user_a1"]))
-
-
-def test_user_can_access_colleague_case_same_company(scenario):  # noqa ANN001
-    """user_a1 can read a case owned by user_a2 (same company)."""
-    s = scenario
-    _authorize_case_access(s["db"], s["case_a2"], _as_user(s["user_a1"]))
-
-
-def test_user_cannot_access_case_from_other_company(scenario):  # noqa ANN001
-    """A regular user cannot access a case owned by a user in a different company."""
-    s = scenario
-    with pytest.raises(HTTPException) as exc:
-        _authorize_case_access(s["db"], s["case_b1"], _as_user(s["user_a1"]))
-    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
-
-
-def test_user_b_cannot_access_company_a_case(scenario):  # noqa ANN001
-    """user_b1 is denied access to a case owned by a user in company A."""
-    s = scenario
-    with pytest.raises(HTTPException) as exc:
-        _authorize_case_access(s["db"], s["case_a1"], _as_user(s["user_b1"]))
-    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
-
-
-# ─── _get_case_db_or_404 ─────────────────────────────────────────────────────
+# ─── _get_case_db_or_404 ──────────────────────────────────────────────────────
 
 
 def test_get_case_db_returns_row_when_found(scenario):  # noqa ANN001
@@ -201,3 +130,103 @@ def test_get_case_db_raises_404_when_not_found(scenario):  # noqa ANN001
     with pytest.raises(HTTPException) as exc:
         _get_case_db_or_404(s["db"], str(uuid.uuid4()))
     assert exc.value.status_code == http.HTTPStatus.NOT_FOUND
+
+
+# ─── require_permission dependency ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_require_permission_passes_when_fga_allows(scenario):  # noqa ANN001
+    """Dependency does not raise when OpenFGA returns allowed=True."""
+    s = scenario
+    user = _as_user(s["user_a1"])
+
+    with patch("src.api.v1.auth.fga.check_permission", new=AsyncMock(return_value=True)):
+        from src.api.v1.auth.fga import require_permission
+        checker = require_permission("viewer")
+        result = await checker(case_id=s["case_a1"].id, current_user=user)
+        assert result == user
+
+
+@pytest.mark.asyncio
+async def test_require_permission_raises_403_when_fga_denies(scenario):  # noqa ANN001
+    """Dependency raises 403 when OpenFGA returns allowed=False."""
+    s = scenario
+    user = _as_user(s["user_b1"])
+
+    with patch("src.api.v1.auth.fga.check_permission", new=AsyncMock(return_value=False)):
+        from src.api.v1.auth.fga import require_permission
+        checker = require_permission("viewer")
+        with pytest.raises(HTTPException) as exc:
+            await checker(case_id=s["case_a1"].id, current_user=user)
+        assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
+
+
+@pytest.mark.asyncio
+async def test_require_permission_editor_passes_when_fga_allows(scenario):  # noqa ANN001
+    """Editor permission check passes when OpenFGA allows it."""
+    s = scenario
+    user = _as_user(s["user_a1"])
+
+    with patch("src.api.v1.auth.fga.check_permission", new=AsyncMock(return_value=True)):
+        from src.api.v1.auth.fga import require_permission
+        checker = require_permission("editor")
+        result = await checker(case_id=s["case_a1"].id, current_user=user)
+        assert result == user
+
+
+@pytest.mark.asyncio
+async def test_require_permission_editor_raises_403_when_fga_denies(scenario):  # noqa ANN001
+    """Editor permission check raises 403 when OpenFGA denies it."""
+    s = scenario
+    user = _as_user(s["user_a2"])
+
+    with patch("src.api.v1.auth.fga.check_permission", new=AsyncMock(return_value=False)):
+        from src.api.v1.auth.fga import require_permission
+        checker = require_permission("editor")
+        with pytest.raises(HTTPException) as exc:
+            await checker(case_id=s["case_a1"].id, current_user=user)
+        assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
+
+
+# ─── filter_by_permission ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_filter_by_permission_returns_allowed_cases(scenario):  # noqa ANN001
+    """Only cases the user has viewer access to are returned."""
+    s = scenario
+    from src.api.v1.auth.fga import filter_by_permission
+    from src.api.v1.case.models import Case
+
+    cases = [
+        Case(id=s["case_a1"].id, responsible_person="A", status="open", customer="X",
+             company_id=s["case_a1"].company_id, user_id=s["user_a1"].id,
+             created_at="2024-01-01", updated_at=None),
+        Case(id=s["case_b1"].id, responsible_person="B", status="open", customer="Y",
+             company_id=s["case_b1"].company_id, user_id=s["user_b1"].id,
+             created_at="2024-01-01", updated_at=None),
+    ]
+
+    from unittest.mock import MagicMock
+    allowed = MagicMock(allowed=True, correlation_id=s["case_a1"].id)
+    denied = MagicMock(allowed=False, correlation_id=s["case_b1"].id)
+    mock_response = MagicMock(result=[allowed, denied])
+
+    mock_client = AsyncMock()
+    mock_client.batch_check = AsyncMock(return_value=mock_response)
+
+    with patch("src.api.v1.auth.fga.get_fga_client", new=AsyncMock(return_value=mock_client)):
+        result = await filter_by_permission(cases, s["user_a1"].id)
+        assert len(result) == 1
+        assert result[0].id == s["case_a1"].id
+
+
+@pytest.mark.asyncio
+async def test_filter_by_permission_empty_input():  # noqa ANN001
+    """Returns empty list immediately without calling OpenFGA."""
+    with patch("src.api.v1.auth.fga.get_fga_client") as mock_get:
+        from src.api.v1.auth.fga import filter_by_permission
+        result = await filter_by_permission([], "user-id")
+        assert result == []
+        mock_get.assert_not_called()

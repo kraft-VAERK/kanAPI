@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable
 
 from fastapi import FastAPI, Request
@@ -12,6 +13,7 @@ from .db.database import create_tables
 from .health.health import router as health_router
 from .middleware.logging import log_requests
 from .v1.auth.auth import router as auth_v1_router
+from .v1.auth.fga import close_fga_client
 from .v1.case.case import router as case_v1_router
 from .v1.case.storage import ensure_bucket
 from .v1.company import router as company_v1_router
@@ -20,9 +22,21 @@ from .v1.customer import router as customer_v1_rounter
 from .v1.user import router as user_v1_router
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from starlette.responses import Response
 
-app = FastAPI(title="kanAPI", description="API for managing cases")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    """Run startup tasks before yielding, then cleanup on shutdown."""
+    create_tables()
+    ensure_bucket()
+    yield
+    await close_fga_client()
+
+
+app = FastAPI(title="kanAPI", description="API for managing cases", lifespan=lifespan)
 prefix = "/api/v1"
 # auxiliary routers
 app.include_router(health_router, prefix=prefix, tags=["health"])
@@ -33,10 +47,6 @@ app.include_router(company_v1_router, prefix=prefix, tags=["v1", "company"])
 app.include_router(customer_v1_rounter, prefix=prefix, tags=["v1", "customer"])
 app.include_router(user_v1_router, prefix=prefix, tags=["v1", "user"])
 app.get("/api", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})
-
-# Create database tables if they don't exist
-create_tables()
-ensure_bucket()
 
 
 @app.middleware("http")

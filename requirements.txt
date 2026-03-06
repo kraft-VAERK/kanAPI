@@ -13,3 +13,5 @@ python-dotenv
 uuid7
 minio
 requests
+openfga-sdk
+pytest-asyncio
