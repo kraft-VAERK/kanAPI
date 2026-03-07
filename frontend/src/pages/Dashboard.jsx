@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 
 const API = '/api/v1'
 const PAGE_SIZE = 10
@@ -8,9 +8,8 @@ const PAGE_SIZE = 10
 
 export default function Dashboard() {
   const [user, setUser] = useState(null)
-  const [globalCase, setGlobalCase] = useState(null)
-  const [refreshKey, setRefreshKey] = useState(0)
   const navigate = useNavigate()
+  const { caseId } = useParams()
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: 'include' })
@@ -38,15 +37,10 @@ export default function Dashboard() {
     </header>
   )
 
-  function handleCaseDeleted() {
-    setGlobalCase(null)
-    setRefreshKey(k => k + 1)
-  }
-
-  if (globalCase) return (
+  if (caseId) return (
     <>
       {header}
-      <CaseDetailPage c={globalCase} onBack={() => setGlobalCase(null)} onDeleted={handleCaseDeleted} />
+      <CaseDetailPage caseId={caseId} />
     </>
   )
 
@@ -54,170 +48,373 @@ export default function Dashboard() {
     <>
       {header}
       {isSuperAdmin
-        ? <SuperAdminDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
+        ? <SuperAdminDashboard user={user} />
         : isCompanyAdmin
-          ? <CompanyAdminDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
-          : <UserDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
+          ? <CompanyAdminDashboard user={user} />
+          : <UserDashboard user={user} />
       }
     </>
   )
 }
 
-// ─── Super admin view ─────────────────────────────────────────────────────────
+// ─── Super admin ──────────────────────────────────────────────────────────────
 
-function SuperAdminDashboard({ onOpenCase, user }) {
-  const [view, setView] = useState('companies')
+function SuperAdminDashboard() {
+  const { companyId, customer: rawCustomer } = useParams()
+  const location = useLocation()
+  const customer = rawCustomer ? decodeURIComponent(rawCustomer) : null
+  const isClientsTab = !!companyId && location.pathname.includes('/clients')
+
+  if (!companyId) return <CompaniesListView />
+  return <CompanyDetailView companyId={companyId} activeTab={isClientsTab ? 'clients' : 'cases'} selectedCustomer={customer} />
+}
+
+function CompaniesListView() {
   const [companies, setCompanies] = useState([])
-  const [selectedCompany, setSelectedCompany] = useState(null)
-  const [companyCases, setCompanyCases] = useState([])
-  const [companyClients, setCompanyClients] = useState([])
-  const [companyUsers, setCompanyUsers] = useState([])
-  const [selectedClient, setSelectedClient] = useState(null)
-  const [companyTab, setCompanyTab] = useState('cases')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
-  const [showCreateCase, setShowCreateCase] = useState(false)
+  const navigate = useNavigate()
 
-  function loadCompanies() {
+  function load() {
     fetch(`${API}/company/`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
       .then(setCompanies)
   }
 
-  useEffect(() => { loadCompanies() }, [])
+  useEffect(() => { load() }, [])
 
-  async function openCompany(company) {
-    const [casesRes, usersRes] = await Promise.all([
-      fetch(`${API}/company/${company.id}/cases`, { credentials: 'include' }),
-      fetch(`${API}/company/${company.id}/users`, { credentials: 'include' }),
-    ])
-    const cases = casesRes.ok ? await casesRes.json() : []
-    const users = usersRes.ok ? await usersRes.json() : []
-    const customerMap = {}
-    for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
-    setCompanyCases(cases)
-    setCompanyClients(Object.entries(customerMap).map(([name, count]) => ({ name, count })))
-    setCompanyUsers(users)
-    setSelectedCompany(company)
-    setCompanyTab('cases')
-    setSelectedClient(null)
-    setPage(1)
-    setView('company')
-  }
-
-  async function reloadCompanyCases() {
-    const casesRes = await fetch(`${API}/company/${selectedCompany.id}/cases`, { credentials: 'include' })
-    const cases = casesRes.ok ? await casesRes.json() : []
-    const customerMap = {}
-    for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
-    setCompanyCases(cases)
-    setCompanyClients(Object.entries(customerMap).map(([name, count]) => ({ name, count })))
-  }
-
-  function backToCompanies() {
-    setSelectedCompany(null)
-    setCompanyCases([])
-    setCompanyClients([])
-    setCompanyUsers([])
-    setSelectedClient(null)
-    setShowCreateCase(false)
-    setPage(1)
-    setView('companies')
-  }
-
-  function switchCompanyTab(t) { setCompanyTab(t); setSelectedClient(null); setPage(1) }
-
-  const filteredCases = selectedClient ? companyCases.filter(c => c.customer === selectedClient) : companyCases
-  const companyViewItems = companyTab === 'clients' && !selectedClient ? companyClients
-    : companyTab === 'clients' ? filteredCases
-    : companyCases
-  const totalPages = Math.max(1, Math.ceil(
-    view === 'companies' ? companies.length / PAGE_SIZE : companyViewItems.length / PAGE_SIZE
-  ))
+  const totalPages = Math.max(1, Math.ceil(companies.length / PAGE_SIZE))
 
   return (
     <main className='dashboard-main'>
-      {view === 'companies' && (
+      <div className='section-heading'>
+        <h2>Companies</h2>
+        <button className='create-btn' onClick={() => setShowCreate(true)}>+ Add Company</button>
+      </div>
+      {companies.length === 0
+        ? <p className='no-cases'>No companies found.</p>
+        : (
+          <>
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead>
+              <tbody>
+                {companies
+                  .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+                  .map(c => (
+                    <tr key={c.id} className='clickable' onClick={() => navigate(`/company/${c.id}`)}>
+                      <td>{c.name}</td>
+                      <td>{c.email || '—'}</td>
+                      <td>{c.phone || '—'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            <Pagination page={page} totalPages={totalPages} setPage={setPage} />
+          </>
+        )}
+      {showCreate && (
+        <CreateCompanyModal
+          companies={companies}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { setShowCreate(false); load() }}
+        />
+      )}
+    </main>
+  )
+}
+
+function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
+  const [company, setCompany] = useState(null)
+  const [cases, setCases] = useState([])
+  const [users, setUsers] = useState([])
+  const [clients, setClients] = useState([])
+  const [page, setPage] = useState(1)
+  const [showCreateCase, setShowCreateCase] = useState(false)
+  const navigate = useNavigate()
+
+  function deriveClients(fetchedCases) {
+    const map = {}
+    for (const c of fetchedCases) map[c.customer] = (map[c.customer] || 0) + 1
+    setClients(Object.entries(map).map(([name, count]) => ({ name, count })))
+  }
+
+  useEffect(() => {
+    fetch(`${API}/company/`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(all => setCompany(all.find(c => c.id === companyId) || { id: companyId, name: '…' }))
+
+    Promise.all([
+      fetch(`${API}/company/${companyId}/cases`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/company/${companyId}/users`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
+    ]).then(([fetchedCases, fetchedUsers]) => {
+      setCases(fetchedCases)
+      setUsers(fetchedUsers)
+      deriveClients(fetchedCases)
+    })
+  }, [companyId])
+
+  useEffect(() => { setPage(1) }, [activeTab, selectedCustomer])
+
+  async function reloadCases() {
+    const res = await fetch(`${API}/company/${companyId}/cases`, { credentials: 'include' })
+    const fetchedCases = res.ok ? await res.json() : []
+    setCases(fetchedCases)
+    deriveClients(fetchedCases)
+  }
+
+  const filteredCases = selectedCustomer ? cases.filter(c => c.customer === selectedCustomer) : cases
+  const visibleItems = activeTab === 'clients' && !selectedCustomer ? clients
+    : activeTab === 'clients' ? filteredCases
+    : cases
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
+  const pageSlice = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  return (
+    <main className='dashboard-main'>
+      <div className='section-heading'>
+        <button className='back-btn' onClick={() => navigate('/dashboard')}>← Companies</button>
+        <h2>{company?.name || '…'}</h2>
+      </div>
+      <div className='tabs'>
+        <button className={`tab${activeTab === 'cases' ? ' active' : ''}`} onClick={() => navigate(`/company/${companyId}`)}>Cases</button>
+        <button className={`tab${activeTab === 'clients' ? ' active' : ''}`} onClick={() => navigate(`/company/${companyId}/clients`)}>Clients</button>
+      </div>
+
+      {activeTab === 'cases' && (
+        cases.length === 0
+          ? <p className='no-cases'>No cases for this company.</p>
+          : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+      )}
+
+      {activeTab === 'clients' && !selectedCustomer && (
+        clients.length === 0
+          ? <p className='no-cases'>No clients for this company.</p>
+          : <><CustomersTable customers={pageSlice} onSelect={name => navigate(`/company/${companyId}/clients/${encodeURIComponent(name)}`)} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+      )}
+
+      {activeTab === 'clients' && selectedCustomer && (
         <>
           <div className='section-heading'>
-            <h2>Companies</h2>
-            <button className='create-btn' onClick={() => setShowCreate(true)}>+ Add Company</button>
+            <button className='back-btn' onClick={() => { setShowCreateCase(false); navigate(`/company/${companyId}/clients`) }}>← Clients</button>
+            <h2>{selectedCustomer}</h2>
+            <button className='create-btn' onClick={() => setShowCreateCase(true)}>+ Add Case</button>
           </div>
-          {companies.length === 0
-            ? <p className='no-cases'>No companies found.</p>
-            : (
-              <>
-                <table>
-                  <thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead>
-                  <tbody>
-                    {companies
-                      .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-                      .map(c => (
-                        <tr key={c.id} className='clickable' onClick={() => openCompany(c)}>
-                          <td>{c.name}</td>
-                          <td>{c.email || '—'}</td>
-                          <td>{c.phone || '—'}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                <Pagination page={page} totalPages={totalPages} setPage={setPage} />
-              </>
-            )}
+          {filteredCases.length === 0
+            ? <p className='no-cases'>No cases for this client.</p>
+            : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+          {showCreateCase && (
+            <CreateCaseModal
+              fixedCompanyId={companyId}
+              fixedCustomer={selectedCustomer}
+              users={users}
+              onClose={() => setShowCreateCase(false)}
+              onCreated={() => { setShowCreateCase(false); reloadCases() }}
+            />
+          )}
+        </>
+      )}
+    </main>
+  )
+}
+
+// ─── Company admin ─────────────────────────────────────────────────────────────
+
+function CompanyAdminDashboard({ user }) {
+  const { customer: rawCustomer } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const customer = rawCustomer ? decodeURIComponent(rawCustomer) : null
+
+  const tab = location.pathname.startsWith('/dashboard/users') ? 'users'
+    : location.pathname.startsWith('/dashboard/customers') ? 'customers'
+    : 'cases'
+
+  const [cases, setCases] = useState([])
+  const [users, setUsers] = useState([])
+  const [page, setPage] = useState(1)
+  const [showCreate, setShowCreate] = useState(false)
+
+  function loadCases() {
+    fetch(`${API}/company/my-cases`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : []).then(setCases)
+  }
+
+  useEffect(() => {
+    loadCases()
+    fetch(`${API}/company/my-users`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : []).then(setUsers)
+  }, [])
+
+  useEffect(() => { setPage(1) }, [tab, customer])
+
+  const customerMap = {}
+  for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
+  const customers = Object.entries(customerMap).map(([name, count]) => ({ name, count }))
+
+  const activeCases = customer ? cases.filter(c => c.customer === customer) : cases
+  const visibleItems = tab === 'customers' && !customer ? customers
+    : tab === 'users' ? users
+    : activeCases
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
+  const pageSlice = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  return (
+    <main className='dashboard-main'>
+      <div className='tabs'>
+        <button className={`tab${tab === 'cases' ? ' active' : ''}`} onClick={() => navigate('/dashboard')}>Cases</button>
+        <button className={`tab${tab === 'customers' ? ' active' : ''}`} onClick={() => navigate('/dashboard/customers')}>Customers</button>
+        <button className={`tab${tab === 'users' ? ' active' : ''}`} onClick={() => navigate('/dashboard/users')}>Users</button>
+      </div>
+
+      {tab === 'cases' && (
+        <>
+          <h2>All Cases</h2>
+          {cases.length === 0
+            ? <p className='no-cases'>No cases found.</p>
+            : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} onCustomerClick={name => navigate(`/dashboard/customers/${encodeURIComponent(name)}`)} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+        </>
+      )}
+
+      {tab === 'customers' && !customer && (
+        <>
+          <h2>Customers</h2>
+          {customers.length === 0
+            ? <p className='no-cases'>No customers found.</p>
+            : <><CustomersTable customers={pageSlice} onSelect={name => navigate(`/dashboard/customers/${encodeURIComponent(name)}`)} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+        </>
+      )}
+
+      {tab === 'customers' && customer && (
+        <>
+          <div className='section-heading'>
+            <button className='back-btn' onClick={() => { setShowCreate(false); navigate('/dashboard/customers') }}>← Back</button>
+            <h2>{customer}</h2>
+            <button className='create-btn' onClick={() => setShowCreate(true)}>+ Add Case</button>
+          </div>
+          {activeCases.length === 0
+            ? <p className='no-cases'>No cases for this customer.</p>
+            : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
           {showCreate && (
-            <CreateCompanyModal
-              companies={companies}
+            <CreateCaseModal
+              fixedCompanyId={cases.find(c => c.customer === customer)?.company_id || ''}
+              fixedCustomer={customer}
+              users={[user, ...users]}
               onClose={() => setShowCreate(false)}
-              onCreated={() => { setShowCreate(false); loadCompanies() }}
+              onCreated={() => { setShowCreate(false); loadCases() }}
             />
           )}
         </>
       )}
 
-      {view === 'company' && (
+      {tab === 'users' && (
+        <>
+          <h2>Users</h2>
+          {users.length === 0
+            ? <p className='no-cases'>No users found.</p>
+            : (
+              <>
+                <table>
+                  <thead><tr><th>Name</th><th>Username</th><th>Email</th></tr></thead>
+                  <tbody>
+                    {pageSlice.map(u => (
+                      <tr key={u.id}>
+                        <td>{u.full_name || '—'}</td>
+                        <td>{u.username}</td>
+                        <td>{u.email}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Pagination page={page} totalPages={totalPages} setPage={setPage} />
+              </>
+            )}
+        </>
+      )}
+    </main>
+  )
+}
+
+// ─── Regular user ─────────────────────────────────────────────────────────────
+
+function UserDashboard({ user }) {
+  const { customer: rawCustomer } = useParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const customer = rawCustomer ? decodeURIComponent(rawCustomer) : null
+  const tab = location.pathname.startsWith('/dashboard/customers') ? 'customers' : 'cases'
+
+  const [cases, setCases] = useState([])
+  const [page, setPage] = useState(1)
+  const [showCreate, setShowCreate] = useState(false)
+
+  function loadCases() {
+    fetch(`${API}/case/`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(setCases)
+  }
+
+  useEffect(() => { loadCases() }, [])
+  useEffect(() => { setPage(1) }, [tab, customer])
+
+  const customerMap = {}
+  for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
+  const customers = Object.entries(customerMap).map(([name, count]) => ({ name, count }))
+
+  const activeCases = customer ? cases.filter(c => c.customer === customer) : cases
+  const visibleItems = tab === 'customers' && !customer ? customers : activeCases
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
+  const pageSlice = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  return (
+    <main className='dashboard-main'>
+      <div className='tabs'>
+        <button className={`tab${tab === 'cases' ? ' active' : ''}`} onClick={() => navigate('/dashboard')}>Cases</button>
+        <button className={`tab${tab === 'customers' ? ' active' : ''}`} onClick={() => navigate('/dashboard/customers')}>Customers</button>
+      </div>
+
+      {tab === 'cases' && (
+        <>
+          <h2>My Cases</h2>
+          {cases.length === 0
+            ? <p className='no-cases'>No cases found.</p>
+            : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} onCustomerClick={name => navigate(`/dashboard/customers/${encodeURIComponent(name)}`)} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+        </>
+      )}
+
+      {tab === 'customers' && !customer && (
+        <>
+          <h2>Customers</h2>
+          {customers.length === 0
+            ? <p className='no-cases'>No customers found.</p>
+            : <><CustomersTable customers={pageSlice} onSelect={name => navigate(`/dashboard/customers/${encodeURIComponent(name)}`)} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+        </>
+      )}
+
+      {tab === 'customers' && customer && (
         <>
           <div className='section-heading'>
-            <button className='back-btn' onClick={backToCompanies}>← Companies</button>
-            <h2>{selectedCompany?.name}</h2>
+            <button className='back-btn' onClick={() => { setShowCreate(false); navigate('/dashboard/customers') }}>← Back</button>
+            <h2>{customer}</h2>
+            <button className='create-btn' onClick={() => setShowCreate(true)}>+ New Case</button>
           </div>
-          <div className='tabs'>
-            <button className={`tab${companyTab === 'cases' ? ' active' : ''}`} onClick={() => switchCompanyTab('cases')}>Cases</button>
-            <button className={`tab${companyTab === 'clients' ? ' active' : ''}`} onClick={() => switchCompanyTab('clients')}>Clients</button>
-          </div>
-
-          {companyTab === 'cases' && (
-            companyCases.length === 0
-              ? <p className='no-cases'>No cases for this company.</p>
-              : <><CasesTable cases={companyCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)} onCaseClick={onOpenCase} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          )}
-
-          {companyTab === 'clients' && !selectedClient && (
-            companyClients.length === 0
-              ? <p className='no-cases'>No clients for this company.</p>
-              : <><CustomersTable customers={companyClients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)} onSelect={name => { setSelectedClient(name); setPage(1) }} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          )}
-
-          {companyTab === 'clients' && selectedClient && (
-            <>
-              <div className='section-heading'>
-                <button className='back-btn' onClick={() => { setSelectedClient(null); setPage(1); setShowCreateCase(false) }}>← Clients</button>
-                <h2>{selectedClient}</h2>
-                <button className='create-btn' onClick={() => setShowCreateCase(true)}>+ Add Case</button>
-              </div>
-              {filteredCases.length === 0
-                ? <p className='no-cases'>No cases for this client.</p>
-                : <><CasesTable cases={filteredCases.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)} onCaseClick={onOpenCase} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-              }
-              {showCreateCase && (
-                <CreateCaseModal
-                  fixedCompanyId={selectedCompany.id}
-                  fixedCustomer={selectedClient}
-                  users={companyUsers}
-                  onClose={() => setShowCreateCase(false)}
-                  onCreated={() => { setShowCreateCase(false); reloadCompanyCases() }}
-                />
-              )}
-            </>
+          {activeCases.length === 0
+            ? <p className='no-cases'>No cases for this customer.</p>
+            : <><CasesTable cases={pageSlice} onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
+          }
+          {showCreate && (
+            <CreateCaseModal
+              fixedCompanyId={cases.find(c => c.customer === customer)?.company_id || ''}
+              fixedCustomer={customer}
+              currentUsername={user?.full_name || user?.username}
+              onClose={() => setShowCreate(false)}
+              onCreated={() => { setShowCreate(false); loadCases() }}
+            />
           )}
         </>
       )}
@@ -292,209 +489,8 @@ function CreateCompanyModal({ companies, onClose, onCreated }) {
   )
 }
 
-// ─── Company admin view ───────────────────────────────────────────────────────
-
-function CompanyAdminDashboard({ onOpenCase, user }) {
-  const [cases, setCases] = useState([])
-  const [users, setUsers] = useState([])
-  const [tab, setTab] = useState('cases')
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [page, setPage] = useState(1)
-  const [showCreate, setShowCreate] = useState(false)
-
-  function loadCases() {
-    fetch(`${API}/company/my-cases`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : []).then(setCases)
-  }
-
-  useEffect(() => {
-    loadCases()
-    fetch(`${API}/company/my-users`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : []).then(setUsers)
-  }, [])
-
-  function switchTab(t) { setTab(t); setSelectedCustomer(null); setPage(1) }
-  function selectCustomer(name) { setSelectedCustomer(name); setPage(1) }
-
-  const customerMap = {}
-  for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
-  const customers = Object.entries(customerMap).map(([name, count]) => ({ name, count }))
-
-  const activeCases = selectedCustomer ? cases.filter(c => c.customer === selectedCustomer) : cases
-  const visibleItems = tab === 'customers' && !selectedCustomer ? customers
-    : tab === 'users' ? users
-    : activeCases
-  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
-  const pageSlice = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-
-  return (
-    <main className='dashboard-main'>
-      <div className='tabs'>
-        <button className={`tab${tab === 'cases' ? ' active' : ''}`} onClick={() => switchTab('cases')}>Cases</button>
-        <button className={`tab${tab === 'customers' ? ' active' : ''}`} onClick={() => switchTab('customers')}>Customers</button>
-        <button className={`tab${tab === 'users' ? ' active' : ''}`} onClick={() => switchTab('users')}>Users</button>
-      </div>
-
-      {tab === 'cases' && (
-        <>
-          <h2>All Cases</h2>
-          {cases.length === 0
-            ? <p className='no-cases'>No cases found.</p>
-            : <><CasesTable cases={pageSlice} onCaseClick={onOpenCase} onCustomerClick={name => { setTab('customers'); selectCustomer(name) }} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-        </>
-      )}
-
-      {tab === 'customers' && !selectedCustomer && (
-        <>
-          <h2>Customers</h2>
-          {customers.length === 0
-            ? <p className='no-cases'>No customers found.</p>
-            : <><CustomersTable customers={pageSlice} onSelect={selectCustomer} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-        </>
-      )}
-
-      {tab === 'customers' && selectedCustomer && (
-        <>
-          <div className='section-heading'>
-            <button className='back-btn' onClick={() => { setSelectedCustomer(null); setPage(1); setShowCreate(false) }}>← Back</button>
-            <h2>{selectedCustomer}</h2>
-            <button className='create-btn' onClick={() => setShowCreate(true)}>+ Add Case</button>
-          </div>
-          {activeCases.length === 0
-            ? <p className='no-cases'>No cases for this customer.</p>
-            : <><CasesTable cases={pageSlice} onCaseClick={onOpenCase} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-          {showCreate && (
-            <CreateCaseModal
-              fixedCompanyId={cases.find(c => c.customer === selectedCustomer)?.company_id || ''}
-              fixedCustomer={selectedCustomer}
-              users={[user, ...users]}
-              onClose={() => setShowCreate(false)}
-              onCreated={() => { setShowCreate(false); loadCases() }}
-            />
-          )}
-        </>
-      )}
-
-      {tab === 'users' && (
-        <>
-          <h2>Users</h2>
-          {users.length === 0
-            ? <p className='no-cases'>No users found.</p>
-            : (
-              <>
-                <table>
-                  <thead><tr><th>Name</th><th>Username</th><th>Email</th></tr></thead>
-                  <tbody>
-                    {pageSlice.map(u => (
-                      <tr key={u.id}>
-                        <td>{u.full_name || '—'}</td>
-                        <td>{u.username}</td>
-                        <td>{u.email}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <Pagination page={page} totalPages={totalPages} setPage={setPage} />
-              </>
-            )}
-        </>
-      )}
-    </main>
-  )
-}
-
-// ─── Regular user view ────────────────────────────────────────────────────────
-
-function UserDashboard({ onOpenCase, user }) {
-  const [cases, setCases] = useState([])
-  const [tab, setTab] = useState('cases')
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [page, setPage] = useState(1)
-  const [showCreate, setShowCreate] = useState(false)
-
-  function loadCases() {
-    fetch(`${API}/case/`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : [])
-      .then(setCases)
-  }
-
-  useEffect(() => { loadCases() }, [])
-
-  function switchTab(t) { setTab(t); setSelectedCustomer(null); setPage(1) }
-  function selectCustomer(name) { setSelectedCustomer(name); setPage(1) }
-
-  const customerMap = {}
-  for (const c of cases) customerMap[c.customer] = (customerMap[c.customer] || 0) + 1
-  const customers = Object.entries(customerMap).map(([name, count]) => ({ name, count }))
-
-  const activeCases = selectedCustomer ? cases.filter(c => c.customer === selectedCustomer) : cases
-  const visibleItems = tab === 'customers' && !selectedCustomer ? customers : activeCases
-  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
-  const pageSlice = visibleItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-
-  return (
-    <main className='dashboard-main'>
-      <div className='tabs'>
-        <button className={`tab${tab === 'cases' ? ' active' : ''}`} onClick={() => switchTab('cases')}>Cases</button>
-        <button className={`tab${tab === 'customers' ? ' active' : ''}`} onClick={() => switchTab('customers')}>Customers</button>
-      </div>
-
-      {tab === 'cases' && (
-        <>
-          <h2>My Cases</h2>
-          {cases.length === 0
-            ? <p className='no-cases'>No cases found.</p>
-            : <><CasesTable cases={pageSlice} onCaseClick={onOpenCase} onCustomerClick={name => { setTab('customers'); selectCustomer(name) }} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-        </>
-      )}
-
-      {tab === 'customers' && !selectedCustomer && (
-        <>
-          <h2>Customers</h2>
-          {customers.length === 0
-            ? <p className='no-cases'>No customers found.</p>
-            : <><CustomersTable customers={pageSlice} onSelect={selectCustomer} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-        </>
-      )}
-
-      {tab === 'customers' && selectedCustomer && (
-        <>
-          <div className='section-heading'>
-            <button className='back-btn' onClick={() => { setSelectedCustomer(null); setPage(1); setShowCreate(false) }}>← Back</button>
-            <h2>{selectedCustomer}</h2>
-            <button className='create-btn' onClick={() => setShowCreate(true)}>+ New Case</button>
-          </div>
-          {activeCases.length === 0
-            ? <p className='no-cases'>No cases for this customer.</p>
-            : <><CasesTable cases={pageSlice} onCaseClick={onOpenCase} /><Pagination page={page} totalPages={totalPages} setPage={setPage} /></>
-          }
-          {showCreate && (
-            <CreateCaseModal
-              fixedCompanyId={cases.find(c => c.customer === selectedCustomer)?.company_id || ''}
-              fixedCustomer={selectedCustomer}
-              currentUsername={user?.full_name || user?.username}
-              onClose={() => setShowCreate(false)}
-              onCreated={() => { setShowCreate(false); loadCases() }}
-            />
-          )}
-        </>
-      )}
-    </main>
-  )
-}
-
 // ─── Create Case modal ────────────────────────────────────────────────────────
 
-// Props:
-//   fixedCompanyId  — company ID inferred from context (always required)
-//   fixedCustomer   — if set, pre-fill customer and hide the field
-//   users           — if set (array), show a dropdown for responsible person
-//   currentUsername — if set (and no users), auto-assign and show as read-only
 function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCustomer = null, users = null, currentUsername = null }) {
   const [form, setForm] = useState({ responsible_person: '', status: 'open', customer: fixedCustomer || '' })
   const [error, setError] = useState(null)
@@ -578,20 +574,29 @@ function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCusto
 
 // ─── Case detail page ─────────────────────────────────────────────────────────
 
-function CaseDetailPage({ c, onBack, onDeleted }) {
+function CaseDetailPage({ caseId }) {
+  const location = useLocation()
+  const [c, setC] = useState(location.state?.case || null)
   const [docs, setDocs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loadingCase, setLoadingCase] = useState(!location.state?.case)
+  const [loadingDocs, setLoadingDocs] = useState(true)
   const [deleteState, setDeleteState] = useState(null) // null | 'confirm' | 'deleting'
   const [deleteError, setDeleteError] = useState(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
-    fetch(`${API}/case/${c.id}/documents`, { credentials: 'include' })
+    if (!location.state?.case) {
+      fetch(`${API}/case/${caseId}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { setC(data); setLoadingCase(false) })
+    }
+    fetch(`${API}/case/${caseId}/documents`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : [])
-      .then(d => { setDocs(d); setLoading(false) })
-  }, [c.id])
+      .then(d => { setDocs(d); setLoadingDocs(false) })
+  }, [caseId])
 
   async function download(filename) {
-    const res = await fetch(`${API}/case/${c.id}/documents/${filename}`, { credentials: 'include' })
+    const res = await fetch(`${API}/case/${caseId}/documents/${filename}`, { credentials: 'include' })
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -605,24 +610,27 @@ function CaseDetailPage({ c, onBack, onDeleted }) {
     setDeleteState('deleting')
     setDeleteError(null)
     try {
-      const res = await fetch(`${API}/case/${c.id}`, { method: 'DELETE', credentials: 'include' })
+      const res = await fetch(`${API}/case/${caseId}`, { method: 'DELETE', credentials: 'include' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setDeleteError(data.detail || 'Failed to delete case.')
         setDeleteState(null)
         return
       }
-      onDeleted()
+      navigate(-1)
     } catch {
       setDeleteError('Network error.')
       setDeleteState(null)
     }
   }
 
+  if (loadingCase) return <main className='dashboard-main'><p className='no-cases'>Loading…</p></main>
+  if (!c) return <main className='dashboard-main'><p className='no-cases'>Case not found.</p></main>
+
   return (
     <main className='dashboard-main'>
       <div className='section-heading'>
-        <button className='back-btn' onClick={onBack}>← Back</button>
+        <button className='back-btn' onClick={() => navigate(-1)}>← Back</button>
         <h2>Case</h2>
         {deleteState === 'confirm'
           ? (
@@ -648,7 +656,7 @@ function CaseDetailPage({ c, onBack, onDeleted }) {
 
       <section className='detail-section'>
         <h3 className='detail-section-title'>Documents</h3>
-        {loading
+        {loadingDocs
           ? <p className='no-cases'>Loading…</p>
           : docs.length === 0
             ? <p className='no-cases'>No documents attached.</p>

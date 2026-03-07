@@ -9,21 +9,25 @@ Hierarchy:
 Run via:  make seed
 """
 
+import asyncio
 import hashlib
 import io
 import random
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
 from faker import Faker
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
 
-from src.api.db.database import SessionLocal, create_tables
-from src.api.v1.case.models import CaseDB
-from src.api.v1.case.storage import BUCKET, _client, ensure_bucket
-from src.api.v1.company.models import CompanyDB
-from src.api.v1.user.models import UserDB
+load_dotenv()
+
+from src.api.db.database import SessionLocal, create_tables  # noqa: E402
+from src.api.v1.case.models import CaseDB  # noqa: E402
+from src.api.v1.case.storage import BUCKET, _client, ensure_bucket  # noqa: E402
+from src.api.v1.company.models import CompanyDB  # noqa: E402
+from src.api.v1.user.models import UserDB  # noqa: E402
 
 fake = Faker()
 STATUSES = ["open", "pending", "in_progress", "closed"]
@@ -281,6 +285,14 @@ def run() -> None:
         acme_docs = _upload_case_docs(acme_case_ids)
         globex_docs = _upload_case_docs(globex_case_ids)
 
+        # ── FGA tuples ───────────────────────────────────────────────────────
+        admin_company_pairs = [
+            (acme_id, acme_client1_id),
+            (acme_id, acme_client2_id),
+            (globex_id, globex_client1_id),
+        ]
+        asyncio.run(_seed_fga_tuples(db, admin_company_pairs))
+
         print("Seed complete.")
         print()
         print("  superadmin@kanapi.dev  / super123   (super admin)")
@@ -297,6 +309,35 @@ def run() -> None:
         raise
     finally:
         db.close()
+
+
+async def _seed_fga_tuples(db: Session, admin_company_pairs: list[tuple[str, str]]) -> None:
+    """Write FGA tuples for all seeded cases and admin-company relationships."""
+    from openfga_sdk.client.models import ClientTuple, ClientWriteRequest
+
+    from src.api.v1.auth.fga import get_fga_client
+
+    client = await get_fga_client()
+
+    tuples: list[ClientTuple] = []
+    for case in db.query(CaseDB).all():
+        tuples.append(ClientTuple(user=f'user:{case.user_id}', relation='creator', object=f'case:{case.id}'))
+        tuples.append(ClientTuple(user=f'company:{case.company_id}', relation='company', object=f'case:{case.id}'))
+    for admin_id, company_id in admin_company_pairs:
+        tuples.append(ClientTuple(user=f'user:{admin_id}', relation='admin', object=f'company:{company_id}'))
+
+    # FGA accepts up to 10 tuples per write request
+    chunk_size = 10
+    for i in range(0, len(tuples), chunk_size):
+        try:
+            await client.write(ClientWriteRequest(writes=tuples[i:i + chunk_size]))
+        except Exception as e:
+            print(f'  FGA write warning (chunk {i // chunk_size}): {e}')
+
+    await client.close()
+    n_cases = len(tuples) - len(admin_company_pairs)
+    n_admin = len(admin_company_pairs)
+    print(f'  FGA: wrote tuples for {n_cases} cases + {n_admin} admin-company relations')
 
 
 if __name__ == "__main__":

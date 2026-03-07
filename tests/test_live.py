@@ -337,6 +337,58 @@ def test_document_list_for_own_case() -> None:
     assert isinstance(r.json(), list)
 
 
+def test_company_admin_can_view_documents_on_subuser_case() -> None:
+    """Company admin can list documents on a sub-user's case.
+
+    FGA model: viewer = ... | tupleToUserset(company.admin)
+    The admin has 'admin' on the company; the case has 'company' relation to that company,
+    so admin is computed as 'viewer'.
+    """
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+
+    # my-cases returns cases owned by sub-users (user_id != admin.id)
+    cases = s.get(f"{BASE}/company/my-cases").json()
+    if not cases:
+        pytest.skip("No company cases available")
+
+    case_id = cases[0]["id"]
+
+    # Case metadata — viewer check
+    r = s.get(f"{BASE}/case/{case_id}")
+    assert r.status_code == 200, f"Company admin blocked from viewing case metadata: {r.status_code} {r.text}"
+
+    # Documents list — viewer check
+    r = s.get(f"{BASE}/case/{case_id}/documents")
+    assert r.status_code == 200, f"Company admin blocked from listing documents: {r.status_code} {r.text}"
+    assert isinstance(r.json(), list)
+
+
+def test_document_download_returns_content() -> None:
+    """Downloading a seeded document streams non-empty content with HTTP 200."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+
+    cases = s.get(f"{BASE}/company/my-cases").json()
+    if not cases:
+        pytest.skip("No company cases available")
+
+    # Find first case that has at least one document
+    for case in cases:
+        docs = s.get(f"{BASE}/case/{case['id']}/documents").json()
+        if docs:
+            filename = docs[0]["name"]
+            expected_size = docs[0]["size"]
+            r = s.get(f"{BASE}/case/{case['id']}/documents/{filename}")
+            assert r.status_code == 200, f"Download failed: {r.status_code} {r.text}"
+            assert len(r.content) == expected_size, (
+                f"Downloaded {len(r.content)} bytes but expected {expected_size}"
+            )
+            return
+
+    pytest.skip("No seeded documents found — run: make seed")
+
+
 def test_document_list_forbidden_for_other_user() -> None:
     """Globex admin cannot list documents of an Acme-created case."""
     s_acme = _session()

@@ -38,10 +38,13 @@ clean:
 			echo "  Port $$port: free"; \
 		fi; \
 	done
+	@echo "Stopping containers and removing volumes..."
+	@docker compose down -v --remove-orphans 2>/dev/null || true
 	@echo "Removing venv and cache..."
 	@rm -rf venv
 	@find src -type f -name "*.pyc" -delete
 	@find src -type d -name "__pycache__" -exec rm -rf {} +
+	@rm -rf logs
 	@echo "Done."
 dev:
 	@echo "Setting up development environment..."
@@ -68,8 +71,13 @@ docker-all:
 	@$(MAKE) docker-login
 	@$(MAKE) docker-push
 db:
-	@echo "Setting up database..."
+	@echo "Setting up database services..."
 	@docker compose up -d
+	@mkdir -p logs
+	@for svc in postgres minio openfga-db openfga; do \
+		docker logs -f $$svc > logs/$$svc.log 2>&1 & \
+	done
+	@echo "  Logs: logs/postgres.log  logs/minio.log  logs/openfga-db.log  logs/openfga.log"
 
 seed:
 	@echo "Seeding database..."
