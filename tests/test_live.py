@@ -16,6 +16,8 @@ Seeded credentials:
   admin@globex.dev      / globex123  — Globex company admin
 """
 
+import uuid
+
 import pytest
 import requests
 
@@ -187,6 +189,28 @@ def test_other_user_without_tuple_gets_403() -> None:
     assert r.status_code == 403, f"Expected 403 but got {r.status_code}: {r.text}"
 
 
+def test_fga_server_is_reachable() -> None:
+    """OpenFGA HTTP server is up and returns a healthy status."""
+    r = requests.get("http://localhost:8080/healthz")
+    assert r.status_code == 200, f"OpenFGA health check failed: {r.text}"
+
+
+def test_case_not_visible_to_other_company_in_list() -> None:
+    """A case created by Acme does not appear in Globex's GET /case/ list (batch_check filters it out)."""
+    # Acme creates a fresh case
+    s_acme = _session()
+    _login(s_acme, "admin@acme.dev", "acme123")
+    companies = s_acme.get(f"{BASE}/company/").json()
+    acme_company_id = companies[0]["id"]
+    case = _create_case(s_acme, acme_company_id, customer="FGA Batch Filter Test")
+
+    # Globex lists their cases — the Acme case must not appear
+    s_globex = _session()
+    _login(s_globex, "admin@globex.dev", "globex123")
+    globex_case_ids = {c["id"] for c in s_globex.get(f"{BASE}/case/").json()}
+    assert case["id"] not in globex_case_ids, "Acme case leaked into Globex's case list"
+
+
 def test_nonexistent_case_returns_404() -> None:
     """Fetching a case ID that doesn't exist returns 404."""
     s = _session()
@@ -196,6 +220,71 @@ def test_nonexistent_case_returns_404() -> None:
     # (OpenFGA has no relation for this ID, so require_permission fires first)
     r = s.get(f"{BASE}/case/00000000-0000-0000-0000-000000000000")
     assert r.status_code in (403, 404)
+
+
+# ─── Delete ───────────────────────────────────────────────────────────────────
+
+
+def test_creator_can_delete_own_case() -> None:
+    """The creator of a case can delete it (FGA: creator → deleter)."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    case = _create_case(s, company_id, customer="Delete Own Case Test")
+    r = s.delete(f"{BASE}/case/{case['id']}")
+    assert r.status_code == 204, f"Creator could not delete their own case: {r.status_code} {r.text}"
+
+    # Confirm it's gone
+    r = s.get(f"{BASE}/case/{case['id']}")
+    assert r.status_code in (403, 404)
+
+
+def test_admin_can_delete_subuser_case() -> None:
+    """Company admin can delete a case created by one of their sub-users."""
+    # Login as admin and get their ID + a company
+    s_admin = _session()
+    admin = _login(s_admin, "admin@acme.dev", "acme123")
+    admin_id = admin["id"]
+    companies = s_admin.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    # Create a sub-user under the admin
+    sub_username = f"subuser_{uuid.uuid4().hex[:8]}"
+    sub_email = f"{sub_username}@acme.dev"
+    sub_password = "subtest123"
+    r = requests.post(f"{BASE}/user/create", json={
+        "username": sub_username,
+        "email": sub_email,
+        "password": sub_password,
+        "is_admin": False,
+        "parent_id": admin_id,
+    })
+    assert r.status_code == 200, f"Sub-user creation failed: {r.text}"
+
+    # Sub-user creates a case
+    s_sub = _session()
+    _login(s_sub, sub_email, sub_password)
+    case = _create_case(s_sub, company_id, customer="Admin Delete Subuser Test")
+
+    # Admin deletes the sub-user's case
+    r = s_admin.delete(f"{BASE}/case/{case['id']}")
+    assert r.status_code == 204, f"Admin could not delete sub-user's case: {r.status_code} {r.text}"
+
+
+def test_other_company_admin_cannot_delete_case() -> None:
+    """A company admin from a different company cannot delete another company's case."""
+    s_acme = _session()
+    _login(s_acme, "admin@acme.dev", "acme123")
+    companies = s_acme.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+    case = _create_case(s_acme, company_id, customer="Cross-Company Delete Test")
+
+    s_globex = _session()
+    _login(s_globex, "admin@globex.dev", "globex123")
+    r = s_globex.delete(f"{BASE}/case/{case['id']}")
+    assert r.status_code == 403, f"Expected 403 but got {r.status_code}: {r.text}"
 
 
 # ─── Company endpoints ────────────────────────────────────────────────────────

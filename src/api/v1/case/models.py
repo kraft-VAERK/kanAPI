@@ -250,24 +250,15 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
     ]
 
 
-# def db_delete_case(db: Session, case_id: int) -> bool:
-#     """Delete a case.
-
-#     Args:
-#         db: Database session
-#         case_id: ID of the case to delete
-
-#     Returns:
-#         True if the case was deleted, False otherwise
-
-#     """
-#     try:
-#         db_case = db_get_case(db, case_id)
-#         if db_case:
-#             db.delete(db_case)
-#             db.commit()
-#             return True
-#         return False
-#     except SQLAlchemyError as e:
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+def db_delete_case(db: Session, case_id: str) -> bool:
+    """Delete a case by ID. Returns True if deleted, False if not found."""
+    try:
+        db_case = db.query(CaseDB).filter(CaseDB.id == case_id).first()
+        if not db_case:
+            return False
+        db.delete(db_case)
+        db.commit()
+        return True
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e

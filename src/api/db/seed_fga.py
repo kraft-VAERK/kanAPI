@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 
+from dotenv import set_key
 from openfga_sdk.client import ClientConfiguration, OpenFgaClient
 from openfga_sdk.models.create_store_request import CreateStoreRequest
+
+_ENV_PATH = Path(__file__).resolve().parents[3] / '.env'
 
 # Authorization model: user, company (member/admin), case (creator/assignee/viewer/editor/deleter)
 CASE_AUTH_MODEL = {
@@ -61,6 +65,12 @@ CASE_AUTH_MODEL = {
                         'child': [
                             {'this': {}},
                             {'computedUserset': {'relation': 'creator'}},
+                            {
+                                'tupleToUserset': {
+                                    'tupleset': {'relation': 'company'},
+                                    'computedUserset': {'relation': 'admin'},
+                                },
+                            },
                         ],
                     },
                 },
@@ -82,7 +92,12 @@ CASE_AUTH_MODEL = {
                             {'type': 'company', 'relation': 'member'},
                         ],
                     },
-                    'deleter': {'directly_related_user_types': [{'type': 'user'}]},
+                    'deleter': {
+                        'directly_related_user_types': [
+                            {'type': 'user'},
+                            {'type': 'company', 'relation': 'admin'},
+                        ],
+                    },
                 },
             },
         },
@@ -107,8 +122,15 @@ async def bootstrap() -> None:
         model_id = model_response.authorization_model_id
         print(f'Authorization model written: {model_id}')
 
+        # Write the IDs into .env so the app picks them up automatically
+        _ENV_PATH.touch(exist_ok=True)
+        set_key(str(_ENV_PATH), 'FGA_API_URL', api_url)
+        set_key(str(_ENV_PATH), 'FGA_STORE_ID', store_id)
+        set_key(str(_ENV_PATH), 'FGA_MODEL_ID', model_id)
+        print(f'Written to {_ENV_PATH}')
+
         print()
-        print('Export these environment variables before starting the app:')
+        print('Or export manually:')
         print(f'  export FGA_API_URL={api_url}')
         print(f'  export FGA_STORE_ID={store_id}')
         print(f'  export FGA_MODEL_ID={model_id}')

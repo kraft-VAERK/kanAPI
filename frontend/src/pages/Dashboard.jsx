@@ -9,6 +9,7 @@ const PAGE_SIZE = 10
 export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [globalCase, setGlobalCase] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -37,10 +38,15 @@ export default function Dashboard() {
     </header>
   )
 
+  function handleCaseDeleted() {
+    setGlobalCase(null)
+    setRefreshKey(k => k + 1)
+  }
+
   if (globalCase) return (
     <>
       {header}
-      <CaseDetailPage c={globalCase} onBack={() => setGlobalCase(null)} />
+      <CaseDetailPage c={globalCase} onBack={() => setGlobalCase(null)} onDeleted={handleCaseDeleted} />
     </>
   )
 
@@ -48,10 +54,10 @@ export default function Dashboard() {
     <>
       {header}
       {isSuperAdmin
-        ? <SuperAdminDashboard onOpenCase={setGlobalCase} user={user} />
+        ? <SuperAdminDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
         : isCompanyAdmin
-          ? <CompanyAdminDashboard onOpenCase={setGlobalCase} user={user} />
-          : <UserDashboard onOpenCase={setGlobalCase} user={user} />
+          ? <CompanyAdminDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
+          : <UserDashboard key={refreshKey} onOpenCase={setGlobalCase} user={user} />
       }
     </>
   )
@@ -572,9 +578,11 @@ function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCusto
 
 // ─── Case detail page ─────────────────────────────────────────────────────────
 
-function CaseDetailPage({ c, onBack }) {
+function CaseDetailPage({ c, onBack, onDeleted }) {
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [deleteState, setDeleteState] = useState(null) // null | 'confirm' | 'deleting'
+  const [deleteError, setDeleteError] = useState(null)
 
   useEffect(() => {
     fetch(`${API}/case/${c.id}/documents`, { credentials: 'include' })
@@ -593,12 +601,45 @@ function CaseDetailPage({ c, onBack }) {
     URL.revokeObjectURL(url)
   }
 
+  async function handleDelete() {
+    setDeleteState('deleting')
+    setDeleteError(null)
+    try {
+      const res = await fetch(`${API}/case/${c.id}`, { method: 'DELETE', credentials: 'include' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setDeleteError(data.detail || 'Failed to delete case.')
+        setDeleteState(null)
+        return
+      }
+      onDeleted()
+    } catch {
+      setDeleteError('Network error.')
+      setDeleteState(null)
+    }
+  }
+
   return (
     <main className='dashboard-main'>
       <div className='section-heading'>
         <button className='back-btn' onClick={onBack}>← Back</button>
         <h2>Case</h2>
+        {deleteState === 'confirm'
+          ? (
+            <div className='delete-confirm'>
+              <span>Delete this case?</span>
+              <button className='back-btn' onClick={() => setDeleteState(null)}>Cancel</button>
+              <button className='delete-btn' onClick={handleDelete}>Confirm</button>
+            </div>
+          )
+          : (
+            <button className='delete-btn' onClick={() => setDeleteState('confirm')}>
+              Delete
+            </button>
+          )
+        }
       </div>
+      {deleteError && <p className='form-error' style={{ marginBottom: '1rem' }}>{deleteError}</p>}
 
       <section className='detail-section'>
         <h3 className='detail-section-title'>Information</h3>

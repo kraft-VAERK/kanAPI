@@ -14,10 +14,19 @@ from uuid_extensions import uuid7
 
 from src.api.db.database import get_db as get_db_session
 from src.api.v1.auth.auth import get_current_user_from_cookie
-from src.api.v1.auth.fga import filter_by_permission, require_permission, write_tuple
-from src.api.v1.user.models import User
+from src.api.v1.auth.fga import delete_tuple, filter_by_permission, require_permission, write_tuple, write_tuple_safe
+from src.api.v1.user.models import User, UserDB
 
-from .models import Case, CaseCreate, CaseDB, DocumentInfo, db_create_case, db_get_case, db_get_cases_by_user
+from .models import (
+    Case,
+    CaseCreate,
+    CaseDB,
+    DocumentInfo,
+    db_create_case,
+    db_delete_case,
+    db_get_case,
+    db_get_cases_by_user,
+)
 from .storage import list_case_documents, stream_case_document
 
 router = APIRouter(prefix="/case", tags=["case"])
@@ -98,7 +107,33 @@ async def create_case(
     case_id = str(uuid7())
     result = db_create_case(db=db, case=case, user_id=current_user.id, case_id=case_id)
     await write_tuple(current_user.id, 'creator', 'case', case_id)
+    await write_tuple(case.company_id, 'company', 'case', case_id, subject_type='company')
+    # If the creator has a parent admin, establish their FGA admin relation to the company
+    # so they can delete cases created by their sub-users.
+    if current_user.parent_id:
+        parent = db.query(UserDB).filter(UserDB.id == current_user.parent_id).first()
+        if parent and parent.is_admin:
+            await write_tuple_safe(str(parent.id), 'admin', 'company', case.company_id)
     return result
+
+
+@router.delete(
+    '/{case_id}',
+    status_code=http.HTTPStatus.NO_CONTENT,
+    summary='Delete a case',
+)
+async def delete_case(
+    case_id: str,
+    db: DbSession,
+    _auth: Annotated[User, Depends(require_permission('deleter'))],
+) -> None:
+    """Delete a case and clean up its OpenFGA creator tuple."""
+    row = _get_case_db_or_404(db, case_id)
+    creator_id = row.user_id
+    company_id = row.company_id
+    db_delete_case(db=db, case_id=case_id)
+    await delete_tuple(creator_id, 'creator', 'case', case_id)
+    await delete_tuple(company_id, 'company', 'case', case_id, subject_type='company')
 
 
 @router.get(
