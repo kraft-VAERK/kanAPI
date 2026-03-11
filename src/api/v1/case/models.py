@@ -20,6 +20,7 @@ class CaseDB(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     responsible_person = Column(String, nullable=False)
+    responsible_user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
     status = Column(String, nullable=False)
     customer = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
@@ -40,6 +41,7 @@ class CaseCreate(pydantic.BaseModel):
     """Model for creating a new case."""
 
     responsible_person: str
+    responsible_user_id: Optional[str] = None
     status: str
     customer: str
     company_id: str
@@ -86,6 +88,7 @@ class Case(pydantic.BaseModel):
     id: str
     deleted: bool = False
     responsible_person: str
+    responsible_user_id: Optional[str] = None
     status: str
     customer: str
     company_id: str
@@ -110,6 +113,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
         db_case = CaseDB(
             id=case_id,
             responsible_person=case.responsible_person,
+            responsible_user_id=case.responsible_user_id,
             status=case.status,
             customer=case.customer,
             company_id=case.company_id,
@@ -122,6 +126,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
         return Case(
             id=db_case.id,
             responsible_person=db_case.responsible_person,
+            responsible_user_id=db_case.responsible_user_id,
             status=db_case.status,
             customer=db_case.customer,
             company_id=db_case.company_id,
@@ -149,6 +154,7 @@ def db_get_case(db: Session, case_id: str) -> Optional[Case]:
         return Case(
             id=db_case.id,
             responsible_person=db_case.responsible_person,
+            responsible_user_id=db_case.responsible_user_id,
             status=db_case.status,
             customer=db_case.customer,
             company_id=db_case.company_id,
@@ -175,6 +181,7 @@ def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
         Case(
             id=c.id,
             responsible_person=c.responsible_person,
+            responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
             company_id=c.company_id,
@@ -240,6 +247,25 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
         Case(
             id=c.id,
             responsible_person=c.responsible_person,
+            responsible_user_id=c.responsible_user_id,
+            status=c.status,
+            customer=c.customer,
+            company_id=c.company_id,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in db_cases
+    ]
+
+
+def db_get_cases_by_responsible_user(db: Session, user_id: str) -> List[Case]:
+    """Get all cases where the given user is the responsible person."""
+    db_cases = db.query(CaseDB).filter(CaseDB.responsible_user_id == user_id).all()
+    return [
+        Case(
+            id=c.id,
+            responsible_person=c.responsible_person,
+            responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
             company_id=c.company_id,

@@ -10,7 +10,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
   const location = useLocation()
-  const { caseId } = useParams()
+  const { caseId, userId } = useParams()
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: 'include' })
@@ -49,6 +49,13 @@ export default function Dashboard() {
     </>
   )
 
+  if (userId) return (
+    <>
+      {header}
+      <UserProfileView userId={userId} viewerIsAdmin={user.is_admin} />
+    </>
+  )
+
   if (isProfilePage) return (
     <>
       {header}
@@ -82,9 +89,11 @@ function SuperAdminDashboard() {
   const location = useLocation()
   const customer = rawCustomer ? decodeURIComponent(rawCustomer) : null
   const isClientsTab = !!companyId && location.pathname.includes('/clients')
+  const isUsersTab = !!companyId && location.pathname.endsWith('/users')
 
   if (!companyId) return <CompaniesListView />
-  return <CompanyDetailView companyId={companyId} activeTab={isClientsTab ? 'clients' : 'cases'} selectedCustomer={customer} />
+  const activeTab = isUsersTab ? 'users' : isClientsTab ? 'clients' : 'cases'
+  return <CompanyDetailView companyId={companyId} activeTab={activeTab} selectedCustomer={customer} />
 }
 
 function CompaniesListView() {
@@ -181,7 +190,8 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
   }
 
   const filteredCases = selectedCustomer ? cases.filter(c => c.customer === selectedCustomer) : cases
-  const visibleItems = activeTab === 'clients' && !selectedCustomer ? clients
+  const visibleItems = activeTab === 'users' ? users
+    : activeTab === 'clients' && !selectedCustomer ? clients
     : activeTab === 'clients' ? filteredCases
     : cases
   const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE))
@@ -196,6 +206,7 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
       <div className='tabs'>
         <button className={`tab${activeTab === 'cases' ? ' active' : ''}`} onClick={() => navigate(`/company/${companyId}`)}>Cases</button>
         <button className={`tab${activeTab === 'clients' ? ' active' : ''}`} onClick={() => navigate(`/company/${companyId}/clients`)}>Clients</button>
+        <button className={`tab${activeTab === 'users' ? ' active' : ''}`} onClick={() => navigate(`/company/${companyId}/users`)}>Users</button>
       </div>
 
       {activeTab === 'cases' && (
@@ -231,6 +242,29 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
             />
           )}
         </>
+      )}
+
+      {activeTab === 'users' && (
+        users.length === 0
+          ? <p className='no-cases'>No users for this company.</p>
+          : (
+            <>
+              <table>
+                <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th></tr></thead>
+                <tbody>
+                  {pageSlice.map(u => (
+                    <tr key={u.id}>
+                      <td>{u.full_name || '—'}</td>
+                      <td><button className='link-btn' onClick={() => navigate(`/user/${u.id}`, { state: { user: u } })}>{u.username}</button></td>
+                      <td>{u.email}</td>
+                      <td>{u.is_admin ? 'Admin' : 'User'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <Pagination page={page} totalPages={totalPages} setPage={setPage} />
+            </>
+          )
       )}
     </main>
   )
@@ -341,7 +375,7 @@ function CompanyAdminDashboard({ user }) {
                     {pageSlice.map(u => (
                       <tr key={u.id}>
                         <td>{u.full_name || '—'}</td>
-                        <td>{u.username}</td>
+                        <td><button className='link-btn' onClick={() => navigate(`/user/${u.id}`, { state: { user: u } })}>{u.username}</button></td>
                         <td>{u.email}</td>
                       </tr>
                     ))}
@@ -430,6 +464,7 @@ function UserDashboard({ user }) {
               fixedCompanyId={cases.find(c => c.customer === customer)?.company_id || ''}
               fixedCustomer={customer}
               currentUsername={user?.full_name || user?.username}
+              currentUserId={user?.id}
               onClose={() => setShowCreate(false)}
               onCreated={() => { setShowCreate(false); loadCases() }}
             />
@@ -437,6 +472,119 @@ function UserDashboard({ user }) {
         </>
       )}
 
+    </main>
+  )
+}
+
+// ─── Admin user profile view ──────────────────────────────────────────────────
+
+function UserProfileView({ userId }) {
+  const [u, setU] = useState(null)
+  const [cases, setCases] = useState([])
+  const [casesPage, setCasesPage] = useState(1)
+  const [error, setError] = useState(null)
+  const [deleteState, setDeleteState] = useState(null) // null | 'confirm' | 'deleting'
+  const [deleteError, setDeleteError] = useState(null)
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    const stateUser = location.state?.user
+    if (stateUser && stateUser.id === userId) {
+      setU(stateUser)
+    } else {
+      fetch(`${API}/user/${userId}`, { credentials: 'include' })
+        .then(async r => {
+          if (!r.ok) { setError('User not found.'); return }
+          setU(await r.json())
+        })
+        .catch(() => setError('Failed to load user.'))
+    }
+    fetch(`${API}/user/${userId}/cases`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(setCases)
+  }, [userId])
+
+  async function handleDelete() {
+    setDeleteState('deleting')
+    setDeleteError(null)
+    try {
+      const res = await fetch(`${API}/user/${userId}`, { method: 'DELETE', credentials: 'include' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setDeleteError(data.detail || 'Failed to delete user.')
+        setDeleteState(null)
+        return
+      }
+      navigate(-1)
+    } catch {
+      setDeleteError('Network error.')
+      setDeleteState(null)
+    }
+  }
+
+  const role = u ? (u.is_admin ? (u.parent_id ? 'Company admin' : 'Super admin') : 'User') : '…'
+  const initials = u ? (u.full_name || u.username).slice(0, 2).toUpperCase() : '?'
+
+  return (
+    <main className='dashboard-main'>
+      <div className='section-heading'>
+        <button className='back-btn' onClick={() => navigate(-1)}>← Back</button>
+        <h2>User Profile</h2>
+        {u && (
+          deleteState === 'confirm'
+            ? (
+              <div className='delete-confirm'>
+                <span>Delete this user?</span>
+                <button className='back-btn' onClick={() => setDeleteState(null)}>Cancel</button>
+                <button className='delete-btn' onClick={handleDelete}>Confirm</button>
+              </div>
+            )
+            : (
+              <button className='delete-btn' onClick={() => setDeleteState('confirm')}>Delete</button>
+            )
+        )}
+      </div>
+      {deleteError && <p className='form-error' style={{ marginBottom: '1rem' }}>{deleteError}</p>}
+      {error
+        ? <p className='no-cases'>{error}</p>
+        : !u
+          ? <p className='no-cases'>Loading…</p>
+          : (
+            <>
+              <div className='profile-card'>
+                <div className='profile-header'>
+                  <div className='profile-avatar'>{initials}</div>
+                  <div className='profile-header-info'>
+                    <span className='profile-header-name'>{u.full_name || u.username}</span>
+                    <span className='profile-header-role'>{role}</span>
+                  </div>
+                </div>
+                <div className='profile-fields'>
+                  <div className='profile-field'><label>Username</label><div className='profile-field-static'>{u.username}</div></div>
+                  <div className='profile-field'><label>Email</label><div className='profile-field-static'>{u.email}</div></div>
+                  <div className='profile-field'><label>Full name</label><div className='profile-field-static'>{u.full_name || '—'}</div></div>
+                  <div className='profile-field'><label>Status</label><div className='profile-badge'>{u.is_active ? 'Active' : 'Inactive'}</div></div>
+                </div>
+              </div>
+              <section className='detail-section'>
+                <h3 className='detail-section-title'>Cases {cases.length > 0 && <span className='detail-count'>({cases.length})</span>}</h3>
+                {cases.length === 0
+                  ? <p className='no-cases'>No cases assigned to this user.</p>
+                  : (
+                    <>
+                      <CasesTable
+                        cases={cases.slice((casesPage - 1) * PAGE_SIZE, casesPage * PAGE_SIZE)}
+                        onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })}
+                      />
+                      <Pagination page={casesPage} totalPages={Math.max(1, Math.ceil(cases.length / PAGE_SIZE))} setPage={setCasesPage} />
+                    </>
+                  )
+                }
+              </section>
+            </>
+          )
+      }
     </main>
   )
 }
@@ -449,6 +597,15 @@ function ProfileView({ user }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
+  const [cases, setCases] = useState([])
+  const [casesPage, setCasesPage] = useState(1)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    fetch(`${API}/user/${user.id}/cases`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(setCases)
+  }, [user.id])
 
   const dirty = username !== user.username || email !== user.email
   const role = user.is_admin ? (user.parent_id ? 'Company admin' : 'Super admin') : 'User'
@@ -479,46 +636,64 @@ function ProfileView({ user }) {
   }
 
   return (
-    <div className='profile-card'>
-      <div className='profile-header'>
-        <div className='profile-avatar'>{initials}</div>
-        <div className='profile-header-info'>
-          <span className='profile-header-name'>{user.full_name || user.username}</span>
-          <span className='profile-header-role'>{role}</span>
+    <>
+      <div className='profile-card'>
+        <div className='profile-header'>
+          <div className='profile-avatar'>{initials}</div>
+          <div className='profile-header-info'>
+            <span className='profile-header-name'>{user.full_name || user.username}</span>
+            <span className='profile-header-role'>{role}</span>
+          </div>
         </div>
+
+        <div className='profile-fields'>
+          <div className='profile-field'>
+            <label>Username</label>
+            <input value={username} onChange={e => { setUsername(e.target.value); setSuccess(false) }} />
+          </div>
+          <div className='profile-field'>
+            <label>Email</label>
+            <input type='email' value={email} onChange={e => { setEmail(e.target.value); setSuccess(false) }} />
+          </div>
+          <div className='profile-field'>
+            <label>Full name</label>
+            <div className='profile-field-static'>{user.full_name || '—'}</div>
+          </div>
+          <div className='profile-field'>
+            <label>Status</label>
+            <div className='profile-badge'>{user.is_active ? 'Active' : 'Inactive'}</div>
+          </div>
+        </div>
+
+        {(dirty || error || success) && (
+          <div className='profile-save-row'>
+            {dirty && (
+              <button className='profile-save-btn' onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            )}
+            {error && <span className='form-error'>{error}</span>}
+            {success && <span className='profile-success'>Changes saved.</span>}
+          </div>
+        )}
       </div>
 
-      <div className='profile-fields'>
-        <div className='profile-field'>
-          <label>Username</label>
-          <input value={username} onChange={e => { setUsername(e.target.value); setSuccess(false) }} />
-        </div>
-        <div className='profile-field'>
-          <label>Email</label>
-          <input type='email' value={email} onChange={e => { setEmail(e.target.value); setSuccess(false) }} />
-        </div>
-        <div className='profile-field'>
-          <label>Full name</label>
-          <div className='profile-field-static'>{user.full_name || '—'}</div>
-        </div>
-        <div className='profile-field'>
-          <label>Status</label>
-          <div className='profile-badge'>{user.is_active ? 'Active' : 'Inactive'}</div>
-        </div>
-      </div>
-
-      {(dirty || error || success) && (
-        <div className='profile-save-row'>
-          {dirty && (
-            <button className='profile-save-btn' onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
-          )}
-          {error && <span className='form-error'>{error}</span>}
-          {success && <span className='profile-success'>Changes saved.</span>}
-        </div>
-      )}
-    </div>
+      <section className='detail-section'>
+        <h3 className='detail-section-title'>Cases {cases.length > 0 && <span className='detail-count'>({cases.length})</span>}</h3>
+        {cases.length === 0
+          ? <p className='no-cases'>No cases assigned to you.</p>
+          : (
+            <>
+              <CasesTable
+                cases={cases.slice((casesPage - 1) * PAGE_SIZE, casesPage * PAGE_SIZE)}
+                onCaseClick={c => navigate(`/case/${c.id}`, { state: { case: c } })}
+              />
+              <Pagination page={casesPage} totalPages={Math.max(1, Math.ceil(cases.length / PAGE_SIZE))} setPage={setCasesPage} />
+            </>
+          )
+        }
+      </section>
+    </>
   )
 }
 
@@ -591,8 +766,8 @@ function CreateCompanyModal({ companies, onClose, onCreated }) {
 
 // ─── Create Case modal ────────────────────────────────────────────────────────
 
-function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCustomer = null, users = null, currentUsername = null }) {
-  const [form, setForm] = useState({ responsible_person: '', status: 'open', customer: fixedCustomer || '' })
+function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCustomer = null, users = null, currentUsername = null, currentUserId = null }) {
+  const [form, setForm] = useState({ responsible_user_id: '', status: 'open', customer: fixedCustomer || '' })
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
 
@@ -600,8 +775,11 @@ function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCusto
 
   async function submit(e) {
     e.preventDefault()
-    const responsible = users ? form.responsible_person : currentUsername
-    if (!responsible) { setError('Responsible person is required.'); return }
+    const responsibleUserId = users ? form.responsible_user_id : currentUserId
+    const responsibleName = users
+      ? (users.find(u => u.id === form.responsible_user_id)?.full_name || users.find(u => u.id === form.responsible_user_id)?.username || '')
+      : currentUsername
+    if (!responsibleName) { setError('Responsible person is required.'); return }
     if (!form.customer.trim()) { setError('Customer is required.'); return }
     if (!fixedCompanyId) { setError('Client company is required.'); return }
     setSaving(true)
@@ -612,7 +790,8 @@ function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCusto
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          responsible_person: responsible,
+          responsible_person: responsibleName,
+          responsible_user_id: responsibleUserId,
           status: form.status,
           customer: form.customer.trim(),
           company_id: fixedCompanyId,
@@ -643,9 +822,9 @@ function CreateCaseModal({ onClose, onCreated, fixedCompanyId = null, fixedCusto
           )}
           {users ? (
             <label>Responsible Person *
-              <select value={form.responsible_person} onChange={e => set('responsible_person', e.target.value)}>
+              <select value={form.responsible_user_id} onChange={e => set('responsible_user_id', e.target.value)}>
                 <option value=''>— Select a user —</option>
-                {users.map(u => <option key={u.id} value={u.full_name || u.username}>{u.full_name || u.username}</option>)}
+                {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
               </select>
             </label>
           ) : (

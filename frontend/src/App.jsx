@@ -15,6 +15,8 @@ export default function App() {
         <Route path='/company/:companyId' element={<Dashboard />} />
         <Route path='/company/:companyId/clients' element={<Dashboard />} />
         <Route path='/company/:companyId/clients/:customer' element={<Dashboard />} />
+        <Route path='/company/:companyId/users' element={<Dashboard />} />
+        <Route path='/user/:userId' element={<Dashboard />} />
         {/* Company admin + regular user */}
         <Route path='/dashboard' element={<Dashboard />} />
         <Route path='/dashboard/customers' element={<Dashboard />} />

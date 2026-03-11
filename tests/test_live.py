@@ -23,7 +23,7 @@ import pytest
 import requests
 from minio import Minio
 
-_minio = Minio('localhost:9000', access_key='minioadmin', secret_key='minioadmin', secure=False)
+_minio = Minio("localhost:9000", access_key="minioadmin", secret_key="minioadmin", secure=False)
 
 BASE = "http://localhost:8000/api/v1"
 
@@ -152,12 +152,15 @@ def test_create_case_missing_required_field_returns_400() -> None:
     companies = s.get(f"{BASE}/company/").json()
     company_id = companies[0]["id"]
 
-    r = s.post(f"{BASE}/case/create", json={
-        "responsible_person": "",
-        "status": "open",
-        "customer": "X",
-        "company_id": company_id,
-    })
+    r = s.post(
+        f"{BASE}/case/create",
+        json={
+            "responsible_person": "",
+            "status": "open",
+            "customer": "X",
+            "company_id": company_id,
+        },
+    )
     assert r.status_code == 400
 
 
@@ -258,13 +261,16 @@ def test_admin_can_delete_subuser_case() -> None:
     sub_username = f"subuser_{uuid.uuid4().hex[:8]}"
     sub_email = f"{sub_username}@acme.dev"
     sub_password = "subtest123"
-    r = requests.post(f"{BASE}/user/create", json={
-        "username": sub_username,
-        "email": sub_email,
-        "password": sub_password,
-        "is_admin": False,
-        "parent_id": admin_id,
-    })
+    r = requests.post(
+        f"{BASE}/user/create",
+        json={
+            "username": sub_username,
+            "email": sub_email,
+            "password": sub_password,
+            "is_admin": False,
+            "parent_id": admin_id,
+        },
+    )
     assert r.status_code == 200, f"Sub-user creation failed: {r.text}"
 
     # Sub-user creates a case
@@ -413,9 +419,7 @@ def test_document_download_returns_content() -> None:
             expected_size = docs[0]["size"]
             r = s.get(f"{BASE}/case/{case['id']}/documents/{filename}")
             assert r.status_code == 200, f"Download failed: {r.status_code} {r.text}"
-            assert len(r.content) == expected_size, (
-                f"Downloaded {len(r.content)} bytes but expected {expected_size}"
-            )
+            assert len(r.content) == expected_size, f"Downloaded {len(r.content)} bytes but expected {expected_size}"
             return
 
     pytest.skip("No seeded documents found — run: make seed")
@@ -435,12 +439,131 @@ def test_document_list_forbidden_for_other_user() -> None:
     assert r.status_code == 403
 
 
+# ─── User CRUD ────────────────────────────────────────────────────────────────
+
+
+def _create_user(session: requests.Session, **kwargs: str) -> dict:
+    """Create a throwaway user via POST /user/create and return the response JSON."""
+    payload = {
+        "username": kwargs.get("username", f"tmp_{uuid.uuid4().hex[:8]}"),
+        "email": kwargs.get("email", f"tmp_{uuid.uuid4().hex[:8]}@test.dev"),
+        "password": kwargs.get("password", "tmppass123"),
+        "full_name": kwargs.get("full_name", "Temp User"),
+        "is_admin": kwargs.get("is_admin", False),
+    }
+    r = session.post(f"{BASE}/user/create", json=payload)
+    assert r.status_code == 200, f"User creation failed: {r.status_code} {r.text}"
+    return r.json()
+
+
+def test_superadmin_can_get_user_by_id() -> None:
+    """Super admin can GET /user/{id} and receives the correct user payload."""
+    s_super = _session()
+    me = _login(s_super, "superadmin@kanapi.dev", "super123")  # noqa: F841
+
+    # Create a throwaway user to fetch
+    new_user = _create_user(s_super)
+    user_id = new_user["id"]
+
+    try:
+        r = s_super.get(f"{BASE}/user/{user_id}")
+        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
+        data = r.json()
+        assert data["id"] == user_id
+        assert data["username"] == new_user["username"]
+    finally:
+        # clean up
+        s_super.delete(f"{BASE}/user/{user_id}")
+
+
+def test_nonadmin_cannot_get_user_by_id() -> None:
+    """A regular (non-admin) user gets 403 when calling GET /user/{id}."""
+    s_super = _session()
+    _login(s_super, "superadmin@kanapi.dev", "super123")
+
+    # Look up a real user ID (any user will do)
+    all_users = s_super.get(f"{BASE}/user/all").json()
+    assert all_users, "No users returned from /user/all"
+    some_id = all_users[0]["id"]
+
+    s_regular = _session()
+    _login(s_regular, "test@acme.dev", "test123")
+    r = s_regular.get(f"{BASE}/user/{some_id}")
+    assert r.status_code == 403, f"Expected 403, got {r.status_code}: {r.text}"
+
+
+def test_superadmin_can_delete_user() -> None:
+    """Super admin can DELETE /user/{id}; the user no longer appears in /user/all."""
+    s_super = _session()
+    _login(s_super, "superadmin@kanapi.dev", "super123")
+
+    new_user = _create_user(s_super)
+    user_id = new_user["id"]
+
+    r = s_super.delete(f"{BASE}/user/{user_id}")
+    assert r.status_code == 204, f"Expected 204, got {r.status_code}: {r.text}"
+
+    # Verify the user is gone
+    r2 = s_super.get(f"{BASE}/user/{user_id}")
+    assert r2.status_code == 404, f"User still reachable after deletion: {r2.status_code}"
+
+
+def test_cannot_delete_self() -> None:
+    """An admin gets 400 when attempting to delete their own account."""
+    s_super = _session()
+    me = _login(s_super, "superadmin@kanapi.dev", "super123")
+
+    r = s_super.delete(f"{BASE}/user/{me['id']}")
+    assert r.status_code == 400, f"Expected 400 for self-delete, got {r.status_code}: {r.text}"
+    assert "own account" in r.json().get("detail", "").lower()
+
+
+def test_nonadmin_cannot_delete_user() -> None:
+    """A regular user gets 403 when attempting to delete any user."""
+    s_super = _session()
+    _login(s_super, "superadmin@kanapi.dev", "super123")
+    all_users = s_super.get(f"{BASE}/user/all").json()
+    some_id = all_users[0]["id"]
+
+    s_regular = _session()
+    _login(s_regular, "test@acme.dev", "test123")
+    r = s_regular.delete(f"{BASE}/user/{some_id}")
+    assert r.status_code == 403, f"Expected 403, got {r.status_code}: {r.text}"
+
+
+def test_delete_nonexistent_user_returns_404() -> None:
+    """Deleting a user ID that doesn't exist returns 404."""
+    s_super = _session()
+    _login(s_super, "superadmin@kanapi.dev", "super123")
+
+    r = s_super.delete(f"{BASE}/user/{uuid.uuid4()}")
+    assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
+
+
+def test_delete_user_with_cases_returns_409() -> None:
+    """Deleting a sub-user who owns cases returns 409 with a helpful message."""
+    s_admin = _session()
+    _login(s_admin, "admin@acme.dev", "acme123")
+
+    # Get a sub-user who has cases
+    users = s_admin.get(f"{BASE}/company/my-users").json()
+    users_with_cases = [u for u in users if not u.get("is_admin", False)]
+    if not users_with_cases:
+        pytest.skip("No sub-users with cases available")
+
+    target_id = users_with_cases[0]["id"]
+    r = s_admin.delete(f"{BASE}/user/{target_id}")
+    assert r.status_code == 409, f"Expected 409 for user-with-cases delete, got {r.status_code}: {r.text}"
+    assert "cases" in r.json().get("detail", "").lower()
+
+
 # ─── Frontend ─────────────────────────────────────────────────────────────────
 
 
 def test_frontend_build_exists() -> None:
     """The frontend dist/ directory exists and contains index.html."""
     from pathlib import Path
+
     dist = Path(__file__).parent.parent / "frontend" / "dist"
     assert dist.is_dir(), "frontend/dist/ not found — run: make frontend"
     assert (dist / "index.html").exists(), "frontend/dist/index.html missing"

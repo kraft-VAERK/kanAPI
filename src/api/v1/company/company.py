@@ -120,7 +120,10 @@ async def get_client_companies(company_id: str, current_user: CurrentUser, db: D
 async def get_company_users(company_id: str, current_user: CurrentUser, db: DbSession) -> list[User]:
     """Return all sub-users belonging to a company (user-based admin accounts)."""
     _require_super_admin(current_user)
-    rows = db.query(UserDB).filter(UserDB.parent_id == company_id).all()
+    client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
+    all_ids = [company_id, *client_ids]
+    user_ids = db.query(CaseDB.user_id).filter(CaseDB.company_id.in_(all_ids)).distinct().subquery()
+    rows = db.query(UserDB).filter(UserDB.id.in_(user_ids)).all()
     return [User.model_validate(r) for r in rows]
 
 

@@ -148,3 +148,59 @@ async def get_all_users(
             status_code=500,
             detail="Error fetching users",
         ) from e
+
+
+@router.delete("/{user_id}", status_code=204)
+async def delete_user_by_id(
+    user_id: str,
+    current_user: Annotated[User, Depends(get_user_from_cookie)],
+    db: Session = Depends(get_db),  # noqa: B008
+) -> None:
+    """Delete a user by ID. Requires admin. Cannot delete yourself."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can delete users.")
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+    user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="User not found.")
+    from src.api.v1.case.models import CaseDB  # local import to avoid circular dependency
+
+    has_cases = db.query(CaseDB).filter(CaseDB.user_id == user_id).first() is not None
+    if has_cases:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete user: \
+                            they have associated cases. Delete their cases first.",
+        )
+    db.delete(user_db)
+    db.commit()
+
+
+@router.get("/{user_id}/cases", response_model=list)
+async def get_user_cases(
+    user_id: str,
+    current_user: Annotated[User, Depends(get_user_from_cookie)],
+    db: Session = Depends(get_db),  # noqa: B008
+) -> list:
+    """Get all cases for a user. Admins can view any user; users can view their own."""
+    if not current_user.is_admin and str(current_user.id) != user_id:
+        raise HTTPException(status_code=403, detail="You can only view your own cases.")
+    from src.api.v1.case.models import db_get_cases_by_responsible_user  # local import to avoid circular dependency
+
+    return db_get_cases_by_responsible_user(db=db, user_id=user_id)
+
+
+@router.get("/{user_id}", response_model=User)
+async def get_user(
+    user_id: str,
+    current_user: Annotated[User, Depends(get_user_from_cookie)],
+    db: Session = Depends(get_db),  # noqa: B008
+) -> User:
+    """Get a user by ID. Requires admin."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can view user profiles.")
+    user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user_db:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return User.model_validate(user_db)

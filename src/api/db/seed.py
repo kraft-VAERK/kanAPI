@@ -149,21 +149,22 @@ def _add_cases(db: Session, *, user_ids: list[str], n_companies: int = 5, compan
             case_pool.append(customer)
     random.shuffle(case_pool)
 
-    # Collect sub-user full names for responsible_person
     from src.api.v1.user.models import UserDB as _UserDB  # local import to avoid circular
 
-    names = [db.query(_UserDB).filter(_UserDB.id == uid).first().full_name for uid in user_ids]
+    users = [db.query(_UserDB).filter(_UserDB.id == uid).first() for uid in user_ids]
 
     case_ids = []
     for customer in case_pool:
         cid = str(uuid7())
         case_ids.append(cid)
+        responsible = random.choice(users)
         db.add(
             CaseDB(
                 id=cid,
                 customer=customer,
                 status=random.choice(STATUSES),
-                responsible_person=random.choice(names),
+                responsible_person=responsible.full_name,
+                responsible_user_id=responsible.id,
                 created_at=datetime.now(timezone.utc),
                 user_id=random.choice(user_ids),
                 company_id=random.choice(company_ids),
@@ -203,6 +204,12 @@ def run() -> None:
             text(
                 "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
                 "company_id UUID REFERENCES companies(id) ON DELETE SET NULL",
+            ),
+        )
+        db.execute(
+            text(
+                "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
+                "responsible_user_id UUID REFERENCES users(id) ON DELETE SET NULL",
             ),
         )
         # Wipe all data so we can enforce NOT NULL safely
@@ -286,7 +293,11 @@ def run() -> None:
         )
 
         # ── Cases ────────────────────────────────────────────────────────────
-        acme_case_ids = _add_cases(db, user_ids=acme_users + [test_user_id], company_ids=[acme_client1_id, acme_client2_id])
+        acme_case_ids = _add_cases(
+            db,
+            user_ids=acme_users + [test_user_id],  # noqa: RUF005
+            company_ids=[acme_client1_id, acme_client2_id],
+        )
         globex_case_ids = _add_cases(db, user_ids=globex_users, company_ids=[globex_client1_id])
 
         db.commit()
@@ -334,23 +345,23 @@ async def _seed_fga_tuples(db: Session, admin_company_pairs: list[tuple[str, str
 
     tuples: list[ClientTuple] = []
     for case in db.query(CaseDB).all():
-        tuples.append(ClientTuple(user=f'user:{case.user_id}', relation='creator', object=f'case:{case.id}'))
-        tuples.append(ClientTuple(user=f'company:{case.company_id}', relation='company', object=f'case:{case.id}'))
+        tuples.append(ClientTuple(user=f"user:{case.user_id}", relation="creator", object=f"case:{case.id}"))
+        tuples.append(ClientTuple(user=f"company:{case.company_id}", relation="company", object=f"case:{case.id}"))
     for admin_id, company_id in admin_company_pairs:
-        tuples.append(ClientTuple(user=f'user:{admin_id}', relation='admin', object=f'company:{company_id}'))
+        tuples.append(ClientTuple(user=f"user:{admin_id}", relation="admin", object=f"company:{company_id}"))
 
     # FGA accepts up to 10 tuples per write request
     chunk_size = 10
     for i in range(0, len(tuples), chunk_size):
         try:
-            await client.write(ClientWriteRequest(writes=tuples[i:i + chunk_size]))
+            await client.write(ClientWriteRequest(writes=tuples[i : i + chunk_size]))
         except Exception as e:
-            print(f'  FGA write warning (chunk {i // chunk_size}): {e}')
+            print(f"  FGA write warning (chunk {i // chunk_size}): {e}")
 
     await client.close()
     n_cases = len(tuples) - len(admin_company_pairs)
     n_admin = len(admin_company_pairs)
-    print(f'  FGA: wrote tuples for {n_cases} cases + {n_admin} admin-company relations')
+    print(f"  FGA: wrote tuples for {n_cases} cases + {n_admin} admin-company relations")
 
 
 if __name__ == "__main__":

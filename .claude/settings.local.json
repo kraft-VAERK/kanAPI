@@ -32,7 +32,11 @@
       "Bash(docker run:*)",
       "Bash(xargs -r docker volume rm)",
       "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"test@acme.dev\"\",\"\"password\"\":\"\"test123\"\"}' -c /tmp/cookies.txt -o /dev/null -w \"%{http_code}\")",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(curl -s http://localhost:8000/api/v1/company/ -b /tmp/sa_cookies.txt)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/company/069b1d54-cb16-7cc7-8000-d079797441dd/users\" -b /tmp/sa_cookies.txt)",
+      "Bash(curl -s \"http://localhost:8000/api/v1/company/069b1d54-cb16-7cc7-8000-d079797441dd/cases\" -b /tmp/sa_cookies.txt)",
+      "Bash(curl -s -X DELETE \"http://localhost:8000/api/v1/user/00000000-0000-0000-0000-000000000000\" -b /tmp/sa_cookies.txt -w \"%{http_code}\")"
     ]
   }
 }
