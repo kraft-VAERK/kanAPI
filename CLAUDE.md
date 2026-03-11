@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-make dev          # Create venv and install dependencies
-make run          # Run backend + frontend dev server in background (logs/backend.log, logs/frontend.log)
+make dev          # Sync dependencies via uv
+make run          # Run backend + frontend dev server in background
 make run-prod     # Run the app (production, 4 workers)
 make db           # Start all Docker services: PostgreSQL, MinIO, OpenFGA (detached)
 make seed         # Wipe and re-seed PostgreSQL with test users/cases/documents
@@ -15,7 +15,7 @@ make lint         # Run Ruff linter
 make lint-fix     # Run Ruff linter with auto-fix
 make test         # Run pytest (unit + integration, excludes live tests)
 make frontend     # npm install + vite build → frontend/dist/
-make clean        # Kill ports 8000/5173, remove venv and __pycache__
+make clean        # Kill ports 8000/5173/9000/9001, stop Docker (removes volumes), remove venv and __pycache__
 ```
 
 Run a single test:
@@ -75,7 +75,6 @@ kanAPI/
 │       ├── main.py
 │       ├── db/      # database.py, seed.py, seed_fga.py, config.py
 │       ├── health/  # health.py
-│       ├── middleware/
 │       └── v1/      # case/, customer/, user/, auth/, company/
 └── tests/
 ```

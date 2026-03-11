@@ -17,7 +17,6 @@ dependencies = [
     "minio",
     "requests",
     "openfga-sdk",
-    "structlog",
 ]
 
 [dependency-groups]

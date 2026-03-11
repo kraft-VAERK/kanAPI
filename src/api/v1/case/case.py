@@ -27,7 +27,7 @@ from .models import (
     db_get_case,
     db_get_cases_by_user,
 )
-from .storage import list_case_documents, stream_case_document
+from .storage import delete_case_documents, list_case_documents, stream_case_document
 
 router = APIRouter(prefix="/case", tags=["case"])
 
@@ -132,6 +132,7 @@ async def delete_case(
     creator_id = row.user_id
     company_id = row.company_id
     db_delete_case(db=db, case_id=case_id)
+    delete_case_documents(case_id)
     await delete_tuple(creator_id, 'creator', 'case', case_id)
     await delete_tuple(company_id, 'company', 'case', case_id, subject_type='company')
 

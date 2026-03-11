@@ -16,10 +16,14 @@ Seeded credentials:
   admin@globex.dev      / globex123  — Globex company admin
 """
 
+import io
 import uuid
 
 import pytest
 import requests
+from minio import Minio
+
+_minio = Minio('localhost:9000', access_key='minioadmin', secret_key='minioadmin', secure=False)
 
 BASE = "http://localhost:8000/api/v1"
 
@@ -271,6 +275,34 @@ def test_admin_can_delete_subuser_case() -> None:
     # Admin deletes the sub-user's case
     r = s_admin.delete(f"{BASE}/case/{case['id']}")
     assert r.status_code == 204, f"Admin could not delete sub-user's case: {r.status_code} {r.text}"
+
+
+def test_delete_case_removes_documents_from_minio() -> None:
+    """Deleting a case removes all its documents from MinIO."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    case = _create_case(s, company_id, customer="Doc Cleanup Test")
+    case_id = case["id"]
+
+    # Seed two documents directly into MinIO
+    for filename in ("report.txt", "invoice.txt"):
+        data = f"content of {filename}".encode()
+        _minio.put_object("kanapi", f"cases/{case_id}/{filename}", io.BytesIO(data), len(data))
+
+    # Confirm they're visible via the API
+    docs = s.get(f"{BASE}/case/{case_id}/documents").json()
+    assert len(docs) == 2, f"Expected 2 docs before delete, got {len(docs)}"
+
+    # Delete the case
+    r = s.delete(f"{BASE}/case/{case_id}")
+    assert r.status_code == 204, f"Delete failed: {r.status_code} {r.text}"
+
+    # Confirm MinIO objects are gone
+    remaining = list(_minio.list_objects("kanapi", prefix=f"cases/{case_id}/", recursive=True))
+    assert len(remaining) == 0, f"Expected 0 docs after delete, found {[o.object_name for o in remaining]}"
 
 
 def test_other_company_admin_cannot_delete_case() -> None:

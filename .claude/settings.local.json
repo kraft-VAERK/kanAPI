@@ -14,7 +14,25 @@
       "Bash(curl -s 'http://localhost:3100/loki/api/v1/query?query={job=\"\"\"\"kanapi\"\"\"\"}|json|event=\"\"\"\"http_request\"\"\"\"&limit=3')",
       "Bash(python3 -m json.tool)",
       "Bash(curl -v -sG 'http://localhost:3100/loki/api/v1/query' --data-urlencode 'query={job=\"\"\"\"kanapi\"\"\"\"}' --data-urlencode 'limit=3')",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(~/.local/bin/uv run ruff check ./src)",
+      "Bash(command -v uv)",
+      "Read(//usr/local/bin/**)",
+      "Read(//home/kv/.cargo/bin/**)",
+      "Bash(source venv/bin/activate)",
+      "Bash(ruff check ./src)",
+      "Bash(pytest tests --maxfail=1 --disable-warnings -v)",
+      "Bash(venv/bin/pytest tests --maxfail=1 --disable-warnings -v)",
+      "Bash(venv/bin/pytest tests/test_case_auth.py tests/test_company.py --disable-warnings -v)",
+      "Bash(~/.local/bin/uv run pytest tests/test_live.py -v)",
+      "Bash(source ~/.zshrc)",
+      "Bash(make run)",
+      "Bash(docker volume:*)",
+      "Bash(sudo rm:*)",
+      "Bash(docker run:*)",
+      "Bash(xargs -r docker volume rm)",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"test@acme.dev\"\",\"\"password\"\":\"\"test123\"\"}' -c /tmp/cookies.txt -o /dev/null -w \"%{http_code}\")",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

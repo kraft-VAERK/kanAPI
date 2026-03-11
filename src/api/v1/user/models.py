@@ -4,6 +4,7 @@ from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
+from pydantic import ConfigDict
 from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,6 +32,8 @@ class UserDB(Base):
 class User(pydantic.BaseModel):
     """Pydantic model for User."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: Optional[str] = pydantic.Field(
         default=None,
         description="Auto-generated UUID by PostgreSQL",
@@ -42,11 +45,6 @@ class User(pydantic.BaseModel):
     is_active: Optional[bool] = True
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
 
     def __str__(self) -> str:
         """Return string representation of the User model."""
@@ -78,6 +76,8 @@ class User(pydantic.BaseModel):
 class UserCreate(pydantic.BaseModel):
     """Pydantic model for creating a new User."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     username: str
     email: str
     password: str
@@ -85,26 +85,20 @@ class UserCreate(pydantic.BaseModel):
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
 
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
-
 
 class UserDelete(pydantic.BaseModel):
     """Pydantic model for deleting a User."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: Optional[str] = None
     email: Optional[str] = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
 
 
 class UserUpdate(pydantic.BaseModel):
     """Pydantic model for updating a User. All fields are optional."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     username: Optional[str] = None
     email: Optional[str] = None
@@ -113,11 +107,6 @@ class UserUpdate(pydantic.BaseModel):
     is_active: Optional[bool] = None
     is_admin: Optional[bool] = None
     parent_id: Optional[str] = None
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 def db_update_user(db: Session, user_id: str, user_update: UserUpdate) -> Optional["User"]:

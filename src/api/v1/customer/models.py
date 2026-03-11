@@ -1,7 +1,8 @@
 """Customer model for API v1."""
 
-import pydantic
 from typing import Optional
+
+import pydantic
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session

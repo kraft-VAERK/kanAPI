@@ -36,6 +36,16 @@ def list_case_documents(case_id: str) -> list[dict]:
         return []
 
 
+def delete_case_documents(case_id: str) -> None:
+    """Delete all objects stored under cases/{case_id}/."""
+    try:
+        objs = _client.list_objects(BUCKET, prefix=f'cases/{case_id}/', recursive=True)
+        for o in objs:
+            _client.remove_object(BUCKET, o.object_name)
+    except S3Error:
+        pass
+
+
 def stream_case_document(case_id: str, filename: str) -> tuple:
     """Return (HTTPResponse, content_type) for the requested document."""
     obj = _client.get_object(BUCKET, f'cases/{case_id}/{filename}')

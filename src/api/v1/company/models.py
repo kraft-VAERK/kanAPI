@@ -5,6 +5,7 @@ from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
+from pydantic import ConfigDict
 from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,6 +32,8 @@ class CompanyDB(Base):
 class Company(pydantic.BaseModel):
     """Pydantic model for Company."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     email: Optional[str] = None
@@ -38,11 +41,6 @@ class Company(pydantic.BaseModel):
     address: Optional[str] = None
     owner_id: Optional[str] = None
     created_at: datetime
-
-    class Config:
-        """Pydantic config."""
-
-        from_attributes = True
 
 
 class CompanyCreate(pydantic.BaseModel):

@@ -1,14 +1,16 @@
 PHONY: run run-prod dev lint lint-fix frontend test seed seed-fga db clean docker-run docker-build docker-push docker-login docker-logout docker-all
 
+
 run:
 	@echo "Starting backend + frontend in background..."
 	@uv sync
 	@cd frontend && npm install --silent
 	@mkdir -p logs
-	@uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --log-level info > logs/backend.log 2>&1 &
-	@cd frontend && npm run dev > ../logs/frontend.log 2>&1 &
-	@echo "  Backend:  http://localhost:8000  (tail logs/backend.log)"
-	@echo "  Frontend: http://localhost:5173  (tail logs/frontend.log)"
+	@nohup uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --log-level info > logs/backend.log 2>&1 & echo $$! > .backend.pid
+	@nohup sh -c 'cd frontend && npm run dev' > logs/frontend.log 2>&1 & echo $$! > .frontend.pid
+	@echo "  Backend:  http://localhost:8000"
+	@echo "  Frontend: http://localhost:5173"
+	@echo "  Logs:     logs/backend.log  logs/frontend.log"
 
 run-prod:
 	@echo "Running the application in production mode..."
@@ -27,7 +29,13 @@ clean:
 		fi; \
 	done
 	@echo "Stopping containers and removing volumes..."
-# 	@docker compose down -v --remove-orphans 2>/dev/null || true
+	@docker compose down -v --remove-orphans 2>/dev/null || true
+	@for pid_file in .backend.pid .frontend.pid; do \
+		if [ -f $$pid_file ]; then \
+			kill $$(cat $$pid_file) 2>/dev/null && echo "  Killed PID $$(cat $$pid_file)"; \
+			rm -f $$pid_file; \
+		fi; \
+	done
 	@echo "Removing venv and cache..."
 	@rm -rf .venv
 	@find src -type f -name "*.pyc" -delete
@@ -69,7 +77,7 @@ seed:
 
 seed-fga:
 	@echo "Creating OpenFGA store and writing authorization model..."
-	@uv run python3 src/api/db/seed_fga.py
+	@uv run python3 -m src.api.db.seed_fga
 
 lint:
 	@echo "Running Ruff linter..."
@@ -88,6 +96,3 @@ test:
 	@echo "Running tests..."
 	@uv run pytest tests --maxfail=1 --disable-warnings -v
 
-logs:
-	@echo "Opening Grafana dashboard..."
-	@open http://localhost:3001/d/kanapi-main/kanapi-observability 2>/dev/null || echo "  Open http://localhost:3001 in your browser"
