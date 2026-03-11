@@ -9,6 +9,7 @@ const PAGE_SIZE = 10
 export default function Dashboard() {
   const [user, setUser] = useState(null)
   const navigate = useNavigate()
+  const location = useLocation()
   const { caseId } = useParams()
 
   useEffect(() => {
@@ -29,11 +30,15 @@ export default function Dashboard() {
 
   const isSuperAdmin = user.is_admin && !user.parent_id
   const isCompanyAdmin = user.is_admin && !!user.parent_id
+  const isProfilePage = location.pathname === '/dashboard/profile'
 
   const header = (
     <header className='dashboard-header'>
       <span>{user.username}</span>
-      <button onClick={handleLogout}>Sign out</button>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button onClick={() => navigate('/dashboard/profile')}>Profile</button>
+        <button onClick={handleLogout}>Logout</button>
+      </div>
     </header>
   )
 
@@ -41,6 +46,19 @@ export default function Dashboard() {
     <>
       {header}
       <CaseDetailPage caseId={caseId} />
+    </>
+  )
+
+  if (isProfilePage) return (
+    <>
+      {header}
+      <main className='dashboard-main'>
+        <div className='tabs'>
+          <button className='tab' onClick={() => navigate('/dashboard')}>← Back</button>
+          <button className='tab active'>Profile</button>
+        </div>
+        <ProfileView user={user} />
+      </main>
     </>
   )
 
@@ -418,7 +436,89 @@ function UserDashboard({ user }) {
           )}
         </>
       )}
+
     </main>
+  )
+}
+
+// ─── Profile view ─────────────────────────────────────────────────────────────
+
+function ProfileView({ user }) {
+  const [username, setUsername] = useState(user.username)
+  const [email, setEmail] = useState(user.email)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(false)
+
+  const dirty = username !== user.username || email !== user.email
+  const role = user.is_admin ? (user.parent_id ? 'Company admin' : 'Super admin') : 'User'
+  const initials = (user.full_name || user.username).slice(0, 2).toUpperCase()
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    setSuccess(false)
+    try {
+      const res = await fetch(`${API}/user/${user.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.detail || 'Failed to save.')
+        return
+      }
+      setSuccess(true)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className='profile-card'>
+      <div className='profile-header'>
+        <div className='profile-avatar'>{initials}</div>
+        <div className='profile-header-info'>
+          <span className='profile-header-name'>{user.full_name || user.username}</span>
+          <span className='profile-header-role'>{role}</span>
+        </div>
+      </div>
+
+      <div className='profile-fields'>
+        <div className='profile-field'>
+          <label>Username</label>
+          <input value={username} onChange={e => { setUsername(e.target.value); setSuccess(false) }} />
+        </div>
+        <div className='profile-field'>
+          <label>Email</label>
+          <input type='email' value={email} onChange={e => { setEmail(e.target.value); setSuccess(false) }} />
+        </div>
+        <div className='profile-field'>
+          <label>Full name</label>
+          <div className='profile-field-static'>{user.full_name || '—'}</div>
+        </div>
+        <div className='profile-field'>
+          <label>Status</label>
+          <div className='profile-badge'>{user.is_active ? 'Active' : 'Inactive'}</div>
+        </div>
+      </div>
+
+      {(dirty || error || success) && (
+        <div className='profile-save-row'>
+          {dirty && (
+            <button className='profile-save-btn' onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          )}
+          {error && <span className='form-error'>{error}</span>}
+          {success && <span className='profile-success'>Changes saved.</span>}
+        </div>
+      )}
+    </div>
   )
 }
 

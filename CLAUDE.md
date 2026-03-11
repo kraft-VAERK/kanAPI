@@ -20,12 +20,12 @@ make clean        # Kill ports 8000/5173, remove venv and __pycache__
 
 Run a single test:
 ```bash
-venv/bin/pytest tests/path/to/test.py::test_name -v
+uv run pytest tests/path/to/test.py::test_name -v
 ```
 
 Run live integration tests (requires full stack):
 ```bash
-venv/bin/pytest tests/test_live.py -v
+uv run pytest tests/test_live.py -v
 ```
 
 Frontend dev server (proxies /api to localhost:8000):
@@ -50,6 +50,7 @@ make run          # start backend + frontend
 | `superadmin@kanapi.dev` | `super123` | Super admin |
 | `admin@acme.dev` | `acme123` | Company admin (Acme) |
 | `admin@globex.dev` | `globex123` | Company admin (Globex) |
+| `test@acme.dev` | `test123` | Regular user (Acme) |
 
 Sub-users are Faker-generated (5 per company admin). Passwords follow `<username>123`.
 

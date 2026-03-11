@@ -1,43 +1,6 @@
 services:
-  # traefik:
-  #   image: traefik:v2.9
-  #   command:
-  #     - "--providers.docker=true"
-  #     - "--providers.docker.exposedbydefault=false"
-  #     - "--entrypoints.web.address=:80"
-  #   ports:
-  #     - "80:80"
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock:ro
-  #   networks:
-  #     - project_network
-
-  # webapp:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: webapp
-  #   ports:
-  #     - "0.0.0.0:8000:8000" # Bind to all interfaces
-  #   networks:
-  #     - project_network
-  #   labels:
-  #     - "traefik.enable=true"
-  #     - "traefik.http.routers.webapp.rule=Host(`kanapi.local`)"
-  #     - "traefik.http.routers.webapp.entrypoints=web"
-  #     - "traefik.http.services.webapp.loadbalancer.server.port=8000"
-  # redis:
-  #   image: redis:8.2-m01-alpine3.22
-  #   container_name: redis
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis-data:/data
-  #   networks:
-  #     - project_networ
-
   postgres:
-    image: postgres:15.4-alpine
+    image: postgres:18.3-alpine3.23
     container_name: postgres
     environment:
       POSTGRES_DB: postgres
@@ -46,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data:/var/lib/postgresql/data
+      - ./data:/var/lib/postgresql
     networks:
       - project_network
 
@@ -111,12 +74,52 @@ services:
     networks:
       - project_network
 
+  loki:
+    image: grafana/loki:3.4.3
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - project_network
+
+  promtail:
+    image: grafana/promtail:3.4.3
+    container_name: promtail
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/kanapi:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - project_network
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana-datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./observability/grafana-dashboard-provision.yml:/etc/grafana/provisioning/dashboards/dashboard.yml:ro
+      - ./observability/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - project_network
+
 volumes:
-  # redis-data:
-  #   driver: local
   data:
     driver: local
   minio-data:
+    driver: local
+  grafana-data:
     driver: local
 networks:
   project_network:

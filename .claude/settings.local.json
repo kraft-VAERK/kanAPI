@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(make db:*)",
+      "Bash(make seed-fga:*)",
+      "Bash(make seed:*)",
+      "Bash(uv run:*)",
+      "Bash(docker ps:*)",
+      "Bash(xargs kill:*)",
+      "Bash(curl -s http://localhost:8000/api/v1/health/live)",
+      "Bash(curl -s -c /tmp/kanapi-cookies http://localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"\"email\"\":\"\"admin@acme.dev\"\",\"\"password\"\":\"\"acme123\"\"}')",
+      "Bash(curl -s -b /tmp/kanapi-cookies http://localhost:8000/api/v1/case/)",
+      "Bash(curl -s 'http://localhost:3100/loki/api/v1/query?query={job=\"\"\"\"kanapi\"\"\"\"}|json|event=\"\"\"\"http_request\"\"\"\"&limit=3')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -v -sG 'http://localhost:3100/loki/api/v1/query' --data-urlencode 'query={job=\"\"\"\"kanapi\"\"\"\"}' --data-urlencode 'limit=3')",
+      "Bash(docker restart:*)"
+    ]
+  }
+}

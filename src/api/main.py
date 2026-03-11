@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable
 
+import structlog
 from fastapi import FastAPI, Request
 
 # Import db package to ensure __init__.py gets executed
@@ -25,6 +28,50 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from starlette.responses import Response
+
+# ── Structlog configuration ─────────────────────────────────────────────
+# Must run at module level (before uvicorn sets up its own loggers).
+
+shared_processors: list = [
+    structlog.contextvars.merge_contextvars,
+    structlog.stdlib.filter_by_level,
+    structlog.stdlib.add_logger_name,
+    structlog.stdlib.add_log_level,
+    structlog.processors.TimeStamper(fmt='iso'),
+    structlog.processors.StackInfoRenderer(),
+    structlog.processors.format_exc_info,
+    structlog.processors.UnicodeDecoder(),
+]
+
+structlog.configure(
+    processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+formatter = structlog.stdlib.ProcessorFormatter(
+    processors=[
+        structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+        structlog.processors.JSONRenderer(),
+    ],
+)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(formatter)
+
+# Reconfigure the root logger
+root_logger = logging.getLogger()
+root_logger.handlers.clear()
+root_logger.addHandler(handler)
+root_logger.setLevel(logging.INFO)
+
+# Intercept uvicorn's loggers so they also emit JSON
+for name in ('uvicorn', 'uvicorn.access', 'uvicorn.error'):
+    uv_logger = logging.getLogger(name)
+    uv_logger.handlers.clear()
+    uv_logger.propagate = True
 
 
 @asynccontextmanager

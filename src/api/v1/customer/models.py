@@ -1,6 +1,7 @@
 """Customer model for API v1."""
 
 import pydantic
+from typing import Optional
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session
@@ -24,14 +25,14 @@ class CustomerDB(Base):
 
 # Pydantic models for API validation
 class Customer(pydantic.BaseModel):  # noqa: D101
-    id: str | None = pydantic.Field(
+    id: Optional[str] = pydantic.Field(
         default=None,
         description="Auto-generated UUID by PostgreSQL",
     )
     name: str
     email: str
-    phone: str | None = None
-    address: str | None = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
 
     class Config:
         """Pydantic config."""
@@ -44,8 +45,8 @@ class CustomerCreate(pydantic.BaseModel):  # noqa: D101, RUF100
 
     name: str
     email: str
-    phone: str | None = None
-    address: str | None = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
 
 
 def db_create_customer(db: Session, customer: CustomerCreate) -> Customer:

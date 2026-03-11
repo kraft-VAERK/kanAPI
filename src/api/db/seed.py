@@ -247,6 +247,17 @@ def run() -> None:
         acme_users = _make_sub_users(db, domain="acme.dev", parent_id=acme_id)
         globex_users = _make_sub_users(db, domain="globex.dev", parent_id=globex_id)
 
+        # ── Static test user (non-admin, under Acme) ──────────────────────────
+        test_user_id = _add_user(
+            db,
+            username="testuser",
+            email="test@acme.dev",
+            full_name="Test User",
+            password="test123",
+            is_admin=False,
+            parent_id=acme_id,
+        )
+
         # ── Companies (proper CompanyDB entities) ─────────────────────────────
         # Owner-level companies
         acme_co_id = _add_company(
@@ -275,7 +286,7 @@ def run() -> None:
         )
 
         # ── Cases ────────────────────────────────────────────────────────────
-        acme_case_ids = _add_cases(db, user_ids=acme_users, company_ids=[acme_client1_id, acme_client2_id])
+        acme_case_ids = _add_cases(db, user_ids=acme_users + [test_user_id], company_ids=[acme_client1_id, acme_client2_id])
         globex_case_ids = _add_cases(db, user_ids=globex_users, company_ids=[globex_client1_id])
 
         db.commit()
@@ -303,6 +314,8 @@ def run() -> None:
         print()
         print("  admin@globex.dev       / globex123  (company admin)")
         print(f"  → {len(globex_users)} sub-users, {len(globex_case_ids)} cases, {globex_docs} documents")
+        print()
+        print("  test@acme.dev          / test123    (regular user, under Acme)")
 
     except Exception:
         db.rollback()

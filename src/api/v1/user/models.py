@@ -1,8 +1,12 @@
 """SQLAlchemy ORM model for User table."""
 
+from typing import Optional
+
 import pydantic
+from fastapi import HTTPException
 from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
 
@@ -27,17 +31,17 @@ class UserDB(Base):
 class User(pydantic.BaseModel):
     """Pydantic model for User."""
 
-    id: str | None = pydantic.Field(
+    id: Optional[str] = pydantic.Field(
         default=None,
         description="Auto-generated UUID by PostgreSQL",
     )
     username: str
     email: str
-    full_name: str | None = None
-    password: str | None = None
-    is_active: bool = True
-    is_admin: bool = False
-    parent_id: str | None = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = True
+    is_admin: Optional[bool] = False
+    parent_id: Optional[str] = None
 
     class Config:
         """Pydantic config."""
@@ -77,9 +81,9 @@ class UserCreate(pydantic.BaseModel):
     username: str
     email: str
     password: str
-    full_name: str | None = None
-    is_admin: bool = False
-    parent_id: str | None = None
+    full_name: Optional[str] = None
+    is_admin: Optional[bool] = False
+    parent_id: Optional[str] = None
 
     class Config:
         """Pydantic config."""
@@ -90,13 +94,62 @@ class UserCreate(pydantic.BaseModel):
 class UserDelete(pydantic.BaseModel):
     """Pydantic model for deleting a User."""
 
-    user_id: str | None = None
-    email: str | None = None
+    user_id: Optional[str] = None
+    email: Optional[str] = None
 
     class Config:
         """Pydantic config."""
 
         from_attributes = True  # Allows converting SQLAlchemy model to Pydantic model
+
+
+class UserUpdate(pydantic.BaseModel):
+    """Pydantic model for updating a User. All fields are optional."""
+
+    username: Optional[str] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+    parent_id: Optional[str] = None
+
+    class Config:
+        """Pydantic config."""
+
+        from_attributes = True
+
+
+def db_update_user(db: Session, user_id: str, user_update: UserUpdate) -> Optional["User"]:
+    """Update an existing user in the database.
+
+    Args:
+        db: SQLAlchemy database session
+        user_id: ID of the user to update
+        user_update: Fields to update (only non-None values are applied)
+
+    Returns:
+        User: Updated user object, or None if not found
+
+    """
+    try:
+        user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+        if not user_db:
+            return None
+
+        updates = user_update.model_dump(exclude_none=True)
+        if 'password' in updates:
+            updates['password'] = User.hash_password(User, updates['password'])
+
+        for field, value in updates.items():
+            setattr(user_db, field, value)
+
+        db.commit()
+        db.refresh(user_db)
+        return User.model_validate(user_db)
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
 
 
 def db_create_user(db: Session, user_create: UserCreate) -> "User":

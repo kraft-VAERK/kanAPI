@@ -1,3 +1,32 @@
+[project]
+name = "kanapi"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic",
+    "uvicorn",
+    "fastapi",
+    "httpx",
+    "faker",
+    "psycopg2-binary",
+    "sqlalchemy",
+    "PyJWT",
+    "python-multipart",
+    "python-dotenv",
+    "uuid7",
+    "minio",
+    "requests",
+    "openfga-sdk",
+    "structlog",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+]
+
 [tool.ruff]
 lint.select = ["E", "F", "I", "W", "C90", "N", "UP", "B", "ANN", "D", "COM", "PT", "RUF", "SIM", "TCH", "ARG"]
 lint.ignore = ["W293"]
@@ -18,6 +47,7 @@ exclude = [
     ".svn",
     ".tox",
     ".venv",
+    "venv",
     "__pypackages__",
     "_build",
     "buck-out",

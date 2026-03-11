@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
 
-from .models import User, UserDB, db_create_user, db_delete_user
+from .models import User, UserDB, UserUpdate, db_create_user, db_delete_user, db_update_user
 
 # Load environment variables from .env file
 load_dotenv()
@@ -112,6 +112,22 @@ async def delete_user(
             status_code=500,
             detail="Error deleting user",
         ) from e
+
+
+@router.patch("/{user_id}", response_model=User)
+async def update_user(
+    user_id: str,
+    user_update: UserUpdate,
+    current_user: Annotated[User, Depends(get_user_from_cookie)],
+    db: Session = Depends(get_db),  # noqa: B008
+) -> User:
+    """Update a user's fields. Requires admin or super admin."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can update user information.")
+    result = db_update_user(db=db, user_id=user_id, user_update=user_update)
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return result
 
 
 @router.get("/all", response_model=List[User])
