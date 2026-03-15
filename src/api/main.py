@@ -14,6 +14,7 @@ from .health.health import router as health_router
 from .v1.auth.auth import router as auth_v1_router
 from .v1.auth.fga import close_fga_client
 from .v1.case.case import router as case_v1_router
+from .v1.case.models import CaseActivityDB  # noqa: F401
 from .v1.case.storage import ensure_bucket
 from .v1.company import router as company_v1_router
 from .v1.company.models import CompanyDB  # noqa: F401

@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from src.api.db.database import Base  # noqa: E402
-from src.api.v1.case.models import CaseDB  # noqa: E402, F401
+from src.api.v1.case.models import CaseActivityDB, CaseDB  # noqa: E402, F401
 from src.api.v1.company.models import CompanyDB  # noqa: E402, F401
 from src.api.v1.user.models import UserDB  # noqa: E402, F401
 

@@ -2,8 +2,8 @@
 
 Hierarchy used across all tests:
   super_admin  (is_admin=True,  parent_id=None)
-  company_admin (is_admin=True,  parent_id=super_admin.id)
-  regular_user  (is_admin=False, parent_id=company_admin.id)
+  company_admin (is_admin=True,  parent_id=super_admin.username)
+  regular_user  (is_admin=False, parent_id=company_admin.username)
 """
 
 import http
@@ -22,9 +22,7 @@ from src.api.v1.user.user import delete_user_by_id, get_user
 
 def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
     """Insert a UserDB row and return the ORM instance."""
-    uid = str(uuid.uuid4())
     row = UserDB(
-        id=uid,
         username=username,
         email=f"{username}@test.dev",
         full_name=username.title(),
@@ -41,7 +39,6 @@ def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
 def _as_user(row):  # noqa ANN001
     """Convert a UserDB ORM row to the Pydantic User model used by auth."""
     return User(
-        id=row.id,
         username=row.username,
         email=row.email,
         full_name=row.full_name,
@@ -54,8 +51,8 @@ def _as_user(row):  # noqa ANN001
 def scenario(db):  # noqa ANN001
     """Insert super_admin, company_admin, and regular_user; return named refs."""
     super_admin = _make_user(db, username="super_admin", is_admin=True)
-    company_admin = _make_user(db, username="company_admin", is_admin=True, parent_id=super_admin.id)
-    regular_user = _make_user(db, username="regular_user", is_admin=False, parent_id=company_admin.id)
+    company_admin = _make_user(db, username="company_admin", is_admin=True, parent_id=super_admin.username)
+    regular_user = _make_user(db, username="regular_user", is_admin=False, parent_id=company_admin.username)
     return {
         "db": db,
         "super_admin": super_admin,
@@ -71,7 +68,7 @@ def test_db_update_user_changes_username(scenario):  # noqa ANN001
     """db_update_user applies partial updates to an existing user."""
     s = scenario
     target = s["regular_user"]
-    result = db_update_user(s["db"], target.id, UserUpdate(username="new_username"))
+    result = db_update_user(s["db"], target.username, UserUpdate(username="new_username"))
     assert result is not None
     assert result.username == "new_username"
     # unchanged fields stay the same
@@ -79,8 +76,8 @@ def test_db_update_user_changes_username(scenario):  # noqa ANN001
 
 
 def test_db_update_user_returns_none_for_missing_id(scenario):  # noqa ANN001
-    """db_update_user returns None when the user ID does not exist."""
-    result = db_update_user(scenario["db"], str(uuid.uuid4()), UserUpdate(username="ghost"))
+    """db_update_user returns None when the username does not exist."""
+    result = db_update_user(scenario["db"], "nonexistent_user", UserUpdate(username="ghost"))
     assert result is None
 
 
@@ -90,8 +87,8 @@ def test_db_update_user_hashes_password(scenario):  # noqa ANN001
 
     s = scenario
     target = s["regular_user"]
-    db_update_user(s["db"], target.id, UserUpdate(password="newpass"))
-    row = s["db"].query(UserDB).filter(UserDB.id == target.id).first()
+    db_update_user(s["db"], target.username, UserUpdate(password="newpass"))
+    row = s["db"].query(UserDB).filter(UserDB.username == target.username).first()
     assert row.password == hashlib.sha256(b"newpass").hexdigest()
 
 
@@ -104,7 +101,7 @@ async def test_delete_user_non_admin_gets_403(scenario):  # noqa ANN001
     s = scenario
     caller = _as_user(s["regular_user"])
     with pytest.raises(HTTPException) as exc:
-        await delete_user_by_id(s["super_admin"].id, caller, s["db"])
+        await delete_user_by_id(s["super_admin"].username, caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 
@@ -114,17 +111,17 @@ async def test_delete_user_self_delete_gets_400(scenario):  # noqa ANN001
     s = scenario
     caller = _as_user(s["super_admin"])
     with pytest.raises(HTTPException) as exc:
-        await delete_user_by_id(s["super_admin"].id, caller, s["db"])
+        await delete_user_by_id(s["super_admin"].username, caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.asyncio
 async def test_delete_user_missing_user_gets_404(scenario):  # noqa ANN001
-    """An admin gets 404 when the target user ID does not exist."""
+    """An admin gets 404 when the target username does not exist."""
     s = scenario
     caller = _as_user(s["super_admin"])
     with pytest.raises(HTTPException) as exc:
-        await delete_user_by_id(str(uuid.uuid4()), caller, s["db"])
+        await delete_user_by_id("nonexistent_user", caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.NOT_FOUND
 
 
@@ -133,11 +130,11 @@ async def test_delete_user_success(scenario):  # noqa ANN001
     """An admin can delete another user; the row is removed from the DB."""
     s = scenario
     caller = _as_user(s["super_admin"])
-    target_id = s["regular_user"].id
+    target_username = s["regular_user"].username
 
-    await delete_user_by_id(target_id, caller, s["db"])
+    await delete_user_by_id(target_username, caller, s["db"])
 
-    row = s["db"].query(UserDB).filter(UserDB.id == target_id).first()
+    row = s["db"].query(UserDB).filter(UserDB.username == target_username).first()
     assert row is None
 
 
@@ -146,11 +143,11 @@ async def test_company_admin_can_delete_user(scenario):  # noqa ANN001
     """A company admin (is_admin=True) can also delete other users."""
     s = scenario
     caller = _as_user(s["company_admin"])
-    target_id = s["regular_user"].id
+    target_username = s["regular_user"].username
 
-    await delete_user_by_id(target_id, caller, s["db"])
+    await delete_user_by_id(target_username, caller, s["db"])
 
-    row = s["db"].query(UserDB).filter(UserDB.id == target_id).first()
+    row = s["db"].query(UserDB).filter(UserDB.username == target_username).first()
     assert row is None
 
 
@@ -175,13 +172,13 @@ async def test_delete_user_with_cases_gets_409(scenario, db):  # noqa ANN001
             customer="Acme",
             company_id=company_id,
             created_at=datetime.now(timezone.utc),
-            user_id=target.id,
+            user_id=target.username,
         ),
     )
     db.flush()
 
     with pytest.raises(HTTPException) as exc:
-        await delete_user_by_id(target.id, caller, db)
+        await delete_user_by_id(target.username, caller, db)
     assert exc.value.status_code == http.HTTPStatus.CONFLICT
 
 
@@ -194,29 +191,28 @@ async def test_get_user_non_admin_gets_403(scenario):  # noqa ANN001
     s = scenario
     caller = _as_user(s["regular_user"])
     with pytest.raises(HTTPException) as exc:
-        await get_user(s["super_admin"].id, caller, s["db"])
+        await get_user(s["super_admin"].username, caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 
 @pytest.mark.asyncio
 async def test_get_user_missing_gets_404(scenario):  # noqa ANN001
-    """An admin gets 404 when the requested user ID does not exist."""
+    """An admin gets 404 when the requested username does not exist."""
     s = scenario
     caller = _as_user(s["super_admin"])
     with pytest.raises(HTTPException) as exc:
-        await get_user(str(uuid.uuid4()), caller, s["db"])
+        await get_user("nonexistent_user", caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.NOT_FOUND
 
 
 @pytest.mark.asyncio
 async def test_get_user_success(scenario):  # noqa ANN001
-    """An admin can retrieve a user by ID and gets the correct data back."""
+    """An admin can retrieve a user by username and gets the correct data back."""
     s = scenario
     caller = _as_user(s["super_admin"])
     target = s["regular_user"]
 
-    result = await get_user(target.id, caller, s["db"])
+    result = await get_user(target.username, caller, s["db"])
 
-    assert result.id == target.id
     assert result.username == target.username
     assert result.email == target.email

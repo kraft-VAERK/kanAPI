@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom'
 const API = '/api/v1'
 
 export default function Register() {
-  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,7 +17,7 @@ export default function Register() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ email, password }),
     })
 
     if (res.ok) {
@@ -40,17 +39,6 @@ export default function Register() {
       <h1>kanAPI</h1>
       <form className='auth-form' onSubmit={handleSubmit} autoComplete='on'>
         <label>
-          Username
-          <input
-            type='text'
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            placeholder='johndoe'
-            required
-            autoFocus
-          />
-        </label>
-        <label>
           Email
           <input
             type='email'
@@ -58,6 +46,7 @@ export default function Register() {
             onChange={e => setEmail(e.target.value)}
             placeholder='you@example.com'
             required
+            autoFocus
           />
         </label>
         <label>

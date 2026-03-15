@@ -5,6 +5,7 @@ from typing import List, Optional
 
 import pydantic
 from fastapi import HTTPException
+from pydantic import ConfigDict
 from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
@@ -20,12 +21,12 @@ class CaseDB(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     responsible_person = Column(String, nullable=False)
-    responsible_user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    responsible_user_id = Column(String, ForeignKey("users.username"), nullable=True)
     status = Column(String, nullable=False)
     customer = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=True)
-    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.username"), nullable=False)
     company_id = Column(UUID(as_uuid=False), ForeignKey("companies.id"), nullable=False)
 
 
@@ -288,3 +289,67 @@ def db_delete_case(db: Session, case_id: str) -> bool:
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+
+
+# ─── Case activity ─────────────────────────────────────────────────────────────
+
+
+class CaseActivityDB(Base):
+    """SQLAlchemy ORM model for case activity log."""
+
+    __tablename__ = 'case_activities'
+
+    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
+    case_id = Column(UUID(as_uuid=False), ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(String, ForeignKey('users.username', ondelete='SET NULL'), nullable=True)
+    action = Column(String, nullable=False)
+    detail = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class CaseActivity(pydantic.BaseModel):
+    """Pydantic model for a case activity entry."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    user_id: Optional[str] = None
+    action: str
+    detail: Optional[str] = None
+    created_at: datetime
+
+
+def db_log_activity(
+    db: Session,
+    case_id: str,
+    user_id: Optional[str],
+    action: str,
+    detail: Optional[str] = None,
+) -> None:
+    """Append an activity entry for a case."""
+    from uuid_extensions import uuid7
+    try:
+        db.add(CaseActivityDB(
+            id=str(uuid7()),
+            case_id=case_id,
+            user_id=user_id,
+            action=action,
+            detail=detail,
+            created_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
+
+
+def db_get_case_activities(db: Session, case_id: str) -> list[CaseActivity]:
+    """Return all activity entries for a case, oldest first."""
+    rows = (
+        db.query(CaseActivityDB)
+        .filter(CaseActivityDB.case_id == case_id)
+        .order_by(CaseActivityDB.created_at.asc())
+        .all()
+    )
+    return [CaseActivity.model_validate(r) for r in rows]

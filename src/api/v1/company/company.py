@@ -14,6 +14,7 @@ from src.api.v1.company.models import (
     CompanyCreate,
     CompanyDB,
     db_create_company,
+    db_delete_company,
     db_get_client_companies,
     db_get_companies,
 )
@@ -58,11 +59,19 @@ async def create_company(
     return db_create_company(db=db, company_create=company)
 
 
+@router.delete('/{company_id}', status_code=http.HTTPStatus.NO_CONTENT)
+async def delete_company(company_id: str, current_user: CurrentUser, db: DbSession) -> None:
+    """Delete a company by ID. Super admin only."""
+    _require_super_admin(current_user)
+    if not db_delete_company(db=db, company_id=company_id):
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Company not found.')
+
+
 @router.get('/my-users', response_model=list[User], status_code=http.HTTPStatus.OK)
 async def get_my_users(current_user: CurrentUser, db: DbSession) -> list[User]:
     """Return all sub-users belonging to the current company admin."""
     _require_company_admin(current_user)
-    rows = db.query(UserDB).filter(UserDB.parent_id == current_user.id).all()
+    rows = db.query(UserDB).filter(UserDB.parent_id == current_user.username).all()
     return [User.model_validate(r) for r in rows]
 
 
@@ -73,7 +82,7 @@ async def get_my_companies(current_user: CurrentUser, db: DbSession) -> list[Com
     Derived from the company_ids on cases owned by their sub-users.
     """
     _require_company_admin(current_user)
-    sub_user_ids = [u.id for u in db.query(UserDB).filter(UserDB.parent_id == current_user.id).all()]
+    sub_user_ids = [u.username for u in db.query(UserDB).filter(UserDB.parent_id == current_user.username).all()]
     if not sub_user_ids:
         return []
     company_ids = [
@@ -90,7 +99,7 @@ async def get_my_company_cases(current_user: CurrentUser, db: DbSession) -> list
     """Return all cases across sub-users of the current company admin."""
     _require_company_admin(current_user)
     sub_user_ids = [
-        u.id for u in db.query(UserDB).filter(UserDB.parent_id == current_user.id).all()
+        u.username for u in db.query(UserDB).filter(UserDB.parent_id == current_user.username).all()
     ]
     if not sub_user_ids:
         return []
@@ -123,7 +132,7 @@ async def get_company_users(company_id: str, current_user: CurrentUser, db: DbSe
     client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
     all_ids = [company_id, *client_ids]
     user_ids = db.query(CaseDB.user_id).filter(CaseDB.company_id.in_(all_ids)).distinct().subquery()
-    rows = db.query(UserDB).filter(UserDB.id.in_(user_ids)).all()
+    rows = db.query(UserDB).filter(UserDB.username.in_(user_ids)).all()
     return [User.model_validate(r) for r in rows]
 
 

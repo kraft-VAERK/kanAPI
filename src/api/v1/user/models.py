@@ -4,12 +4,10 @@ from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
 from sqlalchemy import Boolean, Column, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from uuid_extensions import uuid7
 
 from src.api.db.database import Base
 
@@ -19,14 +17,13 @@ class UserDB(Base):
 
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
-    username = Column(String, nullable=False, unique=True)
+    username = Column(String, primary_key=True, index=True)
     email = Column(String, nullable=False, unique=True)
     full_name = Column(String, nullable=True)
     password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False, nullable=False)
-    parent_id = Column(UUID(as_uuid=False), ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    parent_id = Column(String, ForeignKey('users.username', ondelete='CASCADE'), nullable=True)
 
 
 class User(pydantic.BaseModel):
@@ -34,10 +31,6 @@ class User(pydantic.BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: Optional[str] = pydantic.Field(
-        default=None,
-        description="Auto-generated UUID by PostgreSQL",
-    )
     username: str
     email: str
     full_name: Optional[str] = None
@@ -46,21 +39,27 @@ class User(pydantic.BaseModel):
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
 
+    @field_validator('parent_id', mode='before')
+    @classmethod
+    def coerce_parent_id(cls, v: object) -> Optional[str]:
+        """Convert UUID objects to str (handles old DB schema during migration)."""
+        return str(v) if v is not None else None
+
     def __str__(self) -> str:
         """Return string representation of the User model."""
-        return f"User(id={self.id}, username={self.username}, email={self.email}, \
+        return f"User(username={self.username}, email={self.email}, \
             full_name={self.full_name}, is_active={self.is_active})"
 
     def __repr__(self) -> str:
         """Return string representation of the User model for debugging."""
         return (
-            f"UserDB(id={self.id}, username={self.username}, email={self.email}, "
+            f"UserDB(username={self.username}, email={self.email}, "
             f"full_name={self.full_name}, is_active={self.is_active})"
         )
 
     def __hash__(self) -> int:
         """Hash function for the User model."""
-        return hash((self.id, self.username, self.email, self.full_name, self.is_active))
+        return hash((self.username, self.email, self.full_name, self.is_active))
 
     def hash_password(self, password: str) -> str:
         """Hash the password using a secure hashing algorithm."""
@@ -78,7 +77,7 @@ class UserCreate(pydantic.BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    username: str
+    username: Optional[str] = None  # auto-generated if not provided
     email: str
     password: str
     full_name: Optional[str] = None
@@ -91,7 +90,7 @@ class UserDelete(pydantic.BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    user_id: Optional[str] = None
+    username: Optional[str] = None
     email: Optional[str] = None
 
 
@@ -109,20 +108,10 @@ class UserUpdate(pydantic.BaseModel):
     parent_id: Optional[str] = None
 
 
-def db_update_user(db: Session, user_id: str, user_update: UserUpdate) -> Optional["User"]:
-    """Update an existing user in the database.
-
-    Args:
-        db: SQLAlchemy database session
-        user_id: ID of the user to update
-        user_update: Fields to update (only non-None values are applied)
-
-    Returns:
-        User: Updated user object, or None if not found
-
-    """
+def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optional["User"]:
+    """Update an existing user in the database."""
     try:
-        user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+        user_db = db.query(UserDB).filter(UserDB.username == username).first()
         if not user_db:
             return None
 
@@ -142,20 +131,19 @@ def db_update_user(db: Session, user_id: str, user_update: UserUpdate) -> Option
 
 
 def db_create_user(db: Session, user_create: UserCreate) -> "User":
-    """Create a new user in the database.
-
-    Args:
-        db: SQLAlchemy database session
-        user_create: User creation data containing username, email, password, and optional full name
-
-    Returns:
-        User: Created user object
-
-    """
+    """Create a new user in the database."""
+    import re
     try:
+        if user_create.username:
+            username = user_create.username
+        else:
+            base = re.sub(r'[^a-z0-9.]', '.', user_create.email.split('@')[0].lower())
+            base = re.sub(r'\.+', '.', base).strip('.')
+            # append short suffix to avoid collisions
+            from uuid_extensions import uuid7
+            username = f'{base}.{str(uuid7()).replace("-", "")[-4:]}'
         user_db = UserDB(
-            id=str(uuid7()),
-            username=user_create.username,
+            username=username,
             email=user_create.email,
             full_name=user_create.full_name,
             password=User.hash_password(User, user_create.password),
@@ -178,25 +166,14 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
 
 
 def db_delete_user(db: Session, user_delete: UserDelete) -> bool:
-    """Delete a user from the database.
-
-    Args:
-        db: SQLAlchemy database session
-        user_delete: User deletion data containing either user_id or email
-
-    Returns:
-        bool: True if user was deleted, False if user was not found
-
-    """
-    if not user_delete.user_id and not user_delete.email:
-        raise ValueError("user_id or email must be provided")
-    if user_delete.email:
-        user_db = db.query(UserDB).filter(UserDB.email == user_delete.email).first()
-        if not user_db:
-            return False
-        print(f"User found by email: {user_db}")
+    """Delete a user from the database."""
+    if not user_delete.username and not user_delete.email:
+        raise ValueError("username or email must be provided")
     try:
-        user_db = db.query(UserDB).filter(UserDB.id == user_delete.user_id).first()
+        if user_delete.email:
+            user_db = db.query(UserDB).filter(UserDB.email == user_delete.email).first()
+        else:
+            user_db = db.query(UserDB).filter(UserDB.username == user_delete.username).first()
         if not user_db:
             return False
 

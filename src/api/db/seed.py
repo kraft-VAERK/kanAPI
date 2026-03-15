@@ -40,18 +40,18 @@ def _hash(password: str) -> str:
 def _add_user(
     db: Session,
     *,
-    username: str,
+    username: str | None = None,
     email: str,
     full_name: str,
     password: str,
     is_admin: bool,
     parent_id: str | None,
 ) -> str:
-    uid = str(uuid7())
+    from uuid_extensions import uuid7
+    uname = username or f'usr_{str(uuid7()).replace("-", "")[-12:]}'
     db.add(
         UserDB(
-            id=uid,
-            username=username,
+            username=uname,
             email=email,
             full_name=full_name,
             password=_hash(password),
@@ -61,7 +61,7 @@ def _add_user(
         ),
     )
     db.flush()
-    return uid
+    return uname
 
 
 _DOC_TEMPLATES = [
@@ -151,7 +151,7 @@ def _add_cases(db: Session, *, user_ids: list[str], n_companies: int = 5, compan
 
     from src.api.v1.user.models import UserDB as _UserDB  # local import to avoid circular
 
-    users = [db.query(_UserDB).filter(_UserDB.id == uid).first() for uid in user_ids]
+    users = [db.query(_UserDB).filter(_UserDB.username == uid).first() for uid in user_ids]
 
     case_ids = []
     for customer in case_pool:
@@ -164,7 +164,7 @@ def _add_cases(db: Session, *, user_ids: list[str], n_companies: int = 5, compan
                 customer=customer,
                 status=random.choice(STATUSES),
                 responsible_person=responsible.full_name,
-                responsible_user_id=responsible.id,
+                responsible_user_id=responsible.username,
                 created_at=datetime.now(timezone.utc),
                 user_id=random.choice(user_ids),
                 company_id=random.choice(company_ids),
@@ -178,14 +178,15 @@ def _make_sub_users(db: Session, *, domain: str, parent_id: str, n: int = 5) -> 
     for _ in range(n):
         first = fake.first_name()
         last = fake.last_name()
-        username = f"{first.lower()}.{last.lower()}{random.randint(1, 99)}"
+        username = f"{first.lower()}.{last.lower()}"
+        handle = f"{first.lower()}.{last.lower()}{random.randint(1, 99)}"
         user_ids.append(
             _add_user(
                 db,
                 username=username,
-                email=f"{username}@{domain}",
+                email=f"{handle}@{domain}",
                 full_name=f"{first} {last}",
-                password=f"{username}123",
+                password=f"{handle}123",
                 is_admin=False,
                 parent_id=parent_id,
             ),
@@ -194,30 +195,22 @@ def _make_sub_users(db: Session, *, domain: str, parent_id: str, n: int = 5) -> 
 
 
 def run() -> None:
-    """Drop all rows and insert seed data."""
+    """Drop all tables, recreate schema, and insert seed data."""
+    # Drop all tables to cleanly apply schema changes (seed is always destructive)
+    db_init = SessionLocal()
+    try:
+        db_init.execute(text("DROP TABLE IF EXISTS cases CASCADE"))
+        db_init.execute(text("DROP TABLE IF EXISTS customers CASCADE"))
+        db_init.execute(text("DROP TABLE IF EXISTS users CASCADE"))
+        db_init.execute(text("DROP TABLE IF EXISTS companies CASCADE"))
+        db_init.commit()
+    finally:
+        db_init.close()
+
     create_tables()
     db = SessionLocal()
 
     try:
-        # Schema migration: add column as nullable first (so existing rows don't fail)
-        db.execute(
-            text(
-                "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
-                "company_id UUID REFERENCES companies(id) ON DELETE SET NULL",
-            ),
-        )
-        db.execute(
-            text(
-                "ALTER TABLE cases ADD COLUMN IF NOT EXISTS "
-                "responsible_user_id UUID REFERENCES users(id) ON DELETE SET NULL",
-            ),
-        )
-        # Wipe all data so we can enforce NOT NULL safely
-        db.execute(text("TRUNCATE TABLE companies, cases, users RESTART IDENTITY CASCADE"))
-        # Now enforce NOT NULL (table is empty)
-        db.execute(text("ALTER TABLE cases ALTER COLUMN company_id SET NOT NULL"))
-        db.commit()
-
         # ── Level 0: Super admin ─────────────────────────────────────────────
         super_id = _add_user(
             db,
@@ -257,7 +250,7 @@ def run() -> None:
         # ── Static test user (non-admin, under Acme) ──────────────────────────
         test_user_id = _add_user(
             db,
-            username="testuser",
+            username="test.user",
             email="test@acme.dev",
             full_name="Test User",
             password="test123",

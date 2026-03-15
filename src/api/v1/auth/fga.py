@@ -142,7 +142,7 @@ def require_permission(relation: str, object_type: str = "case") -> Callable:
         case_id: str,
         current_user: Annotated[User, Depends(get_current_user_from_cookie)],
     ) -> User:
-        if not await check_permission(current_user.id, relation, object_type, case_id):
+        if not await check_permission(current_user.username, relation, object_type, case_id):
             raise HTTPException(
                 status_code=http.HTTPStatus.FORBIDDEN,
                 detail=f"You do not have {relation} access to this {object_type}.",

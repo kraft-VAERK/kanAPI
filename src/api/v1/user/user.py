@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
 
-from .models import User, UserDB, UserUpdate, db_create_user, db_delete_user, db_update_user
+from .models import User, UserCreate, UserDB, UserUpdate, db_create_user, db_delete_user, db_update_user
 
 # Load environment variables from .env file
 load_dotenv()
@@ -73,7 +73,7 @@ async def get_user_from_cookie(
 
 @router.post("/create", response_model=User)
 async def create_user(
-    user: User,
+    user: UserCreate,
     db: Session = Depends(get_db),  # noqa: B008
 ) -> User:
     """Create a new user."""
@@ -123,10 +123,18 @@ async def update_user(
 ) -> User:
     """Update a user's fields. Requires admin or super admin."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only admins can update user information.")
-    result = db_update_user(db=db, user_id=user_id, user_update=user_update)
+        raise HTTPException(status_code=403, detail='Only admins can update user information.')
+    is_super_admin = current_user.is_admin and not current_user.parent_id
+    if not is_super_admin:
+        is_self = current_user.username == user_id
+        if not is_self:
+            target = db.query(UserDB).filter(UserDB.username == user_id).first()
+            if not target or target.parent_id != current_user.username:
+                raise HTTPException(status_code=403, detail='You can only update users you manage.')
+        user_update.username = None  # only super admin can change username
+    result = db_update_user(db=db, username=user_id, user_update=user_update)
     if not result:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=404, detail='User not found.')
     return result
 
 
@@ -159,9 +167,9 @@ async def delete_user_by_id(
     """Delete a user by ID. Requires admin. Cannot delete yourself."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only admins can delete users.")
-    if current_user.id == user_id:
+    if current_user.username == user_id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account.")
-    user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+    user_db = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not user_db:
         raise HTTPException(status_code=404, detail="User not found.")
     from src.api.v1.case.models import CaseDB  # local import to avoid circular dependency
@@ -184,7 +192,7 @@ async def get_user_cases(
     db: Session = Depends(get_db),  # noqa: B008
 ) -> list:
     """Get all cases for a user. Admins can view any user; users can view their own."""
-    if not current_user.is_admin and str(current_user.id) != user_id:
+    if not current_user.is_admin and current_user.username != user_id:
         raise HTTPException(status_code=403, detail="You can only view your own cases.")
     from src.api.v1.case.models import db_get_cases_by_responsible_user  # local import to avoid circular dependency
 
@@ -200,7 +208,7 @@ async def get_user(
     """Get a user by ID. Requires admin."""
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Only admins can view user profiles.")
-    user_db = db.query(UserDB).filter(UserDB.id == user_id).first()
+    user_db = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not user_db:
         raise HTTPException(status_code=404, detail="User not found.")
     return User.model_validate(user_db)

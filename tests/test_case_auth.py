@@ -2,11 +2,11 @@
 
 Hierarchy used across all tests:
   super_admin  (is_admin=True,  parent_id=None)
-  ├── company_a  (is_admin=True,  parent_id=super_admin.id)
-  │   ├── user_a1  (is_admin=False, parent_id=company_a.id)  ← owns case_a1
-  │   └── user_a2  (is_admin=False, parent_id=company_a.id)  ← owns case_a2
-  └── company_b  (is_admin=True,  parent_id=super_admin.id)
-      └── user_b1  (is_admin=False, parent_id=company_b.id)  ← owns case_b1
+  ├── company_a  (is_admin=True,  parent_id=super_admin.username)
+  │   ├── user_a1  (is_admin=False, parent_id=company_a.username)  ← owns case_a1
+  │   └── user_a2  (is_admin=False, parent_id=company_a.username)  ← owns case_a2
+  └── company_b  (is_admin=True,  parent_id=super_admin.username)
+      └── user_b1  (is_admin=False, parent_id=company_b.username)  ← owns case_b1
 
 Authorization is delegated to OpenFGA. These tests verify:
   - _get_case_db_or_404 (still a local helper)
@@ -30,10 +30,9 @@ from src.api.v1.user.models import User, UserDB
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 
-def _make_user(db, *, uid, username, is_admin, parent_id=None):  # noqa ANN001
+def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
     """Insert a UserDB row with the given attributes and return the ORM instance."""
     row = UserDB(
-        id=uid,
         username=username,
         email=f"{username}@test.dev",
         full_name=username.title(),
@@ -74,7 +73,6 @@ def _make_case(db, *, cid, user_id, company_id, customer="Acme"):  # noqa ANN001
 def _as_user(row):  # noqa ANN001
     """Convert a UserDB ORM row to the User Pydantic model used by auth."""
     return User(
-        id=row.id,
         username=row.username,
         email=row.email,
         full_name=row.full_name,
@@ -88,16 +86,16 @@ def scenario(db):  # noqa ANN001
     """Create the full user/case hierarchy and return named references."""
     company_id = _make_company(db)
 
-    super_admin = _make_user(db, uid=str(uuid.uuid4()), username="superadmin", is_admin=True)
-    company_a = _make_user(db, uid=str(uuid.uuid4()), username="company_a", is_admin=True, parent_id=super_admin.id)
-    company_b = _make_user(db, uid=str(uuid.uuid4()), username="company_b", is_admin=True, parent_id=super_admin.id)
-    user_a1 = _make_user(db, uid=str(uuid.uuid4()), username="user_a1", is_admin=False, parent_id=company_a.id)
-    user_a2 = _make_user(db, uid=str(uuid.uuid4()), username="user_a2", is_admin=False, parent_id=company_a.id)
-    user_b1 = _make_user(db, uid=str(uuid.uuid4()), username="user_b1", is_admin=False, parent_id=company_b.id)
+    super_admin = _make_user(db, username="superadmin", is_admin=True)
+    company_a = _make_user(db, username="company_a", is_admin=True, parent_id=super_admin.username)
+    company_b = _make_user(db, username="company_b", is_admin=True, parent_id=super_admin.username)
+    user_a1 = _make_user(db, username="user_a1", is_admin=False, parent_id=company_a.username)
+    user_a2 = _make_user(db, username="user_a2", is_admin=False, parent_id=company_a.username)
+    user_b1 = _make_user(db, username="user_b1", is_admin=False, parent_id=company_b.username)
 
-    case_a1 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_a1.id, company_id=company_id)
-    case_a2 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_a2.id, company_id=company_id)
-    case_b1 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_b1.id, company_id=company_id)
+    case_a1 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_a1.username, company_id=company_id)
+    case_a2 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_a2.username, company_id=company_id)
+    case_b1 = _make_case(db, cid=str(uuid.uuid4()), user_id=user_b1.username, company_id=company_id)
 
     return {
         "db": db,
@@ -121,7 +119,7 @@ def test_get_case_db_returns_row_when_found(scenario):  # noqa ANN001
     s = scenario
     row = _get_case_db_or_404(s["db"], s["case_a1"].id)
     assert row.id == s["case_a1"].id
-    assert row.user_id == s["user_a1"].id
+    assert row.user_id == s["user_a1"].username
 
 
 def test_get_case_db_raises_404_when_not_found(scenario):  # noqa ANN001
@@ -201,11 +199,9 @@ async def test_filter_by_permission_returns_allowed_cases(scenario):  # noqa ANN
 
     cases = [
         Case(id=s["case_a1"].id, responsible_person="A", status="open", customer="X",
-             company_id=s["case_a1"].company_id, user_id=s["user_a1"].id,
-             created_at="2024-01-01", updated_at=None),
+             company_id=s["case_a1"].company_id, created_at="2024-01-01", updated_at=None),
         Case(id=s["case_b1"].id, responsible_person="B", status="open", customer="Y",
-             company_id=s["case_b1"].company_id, user_id=s["user_b1"].id,
-             created_at="2024-01-01", updated_at=None),
+             company_id=s["case_b1"].company_id, created_at="2024-01-01", updated_at=None),
     ]
 
     from unittest.mock import MagicMock
@@ -217,7 +213,7 @@ async def test_filter_by_permission_returns_allowed_cases(scenario):  # noqa ANN
     mock_client.batch_check = AsyncMock(return_value=mock_response)
 
     with patch("src.api.v1.auth.fga.get_fga_client", new=AsyncMock(return_value=mock_client)):
-        result = await filter_by_permission(cases, s["user_a1"].id)
+        result = await filter_by_permission(cases, s["user_a1"].username)
         assert len(result) == 1
         assert result[0].id == s["case_a1"].id
 

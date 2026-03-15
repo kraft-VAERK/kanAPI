@@ -6,8 +6,8 @@ Hierarchy used across all tests:
   │   ├── client_a (CompanyDB, owner_id=owner_co.id)  ← has case_a
   │   └── client_b (CompanyDB, owner_id=owner_co.id)
   └── solo_co    (CompanyDB, owner_id=None)            ← no clients
-  company_admin (is_admin=True,  parent_id=super_admin.id)
-  regular_user  (is_admin=False, parent_id=company_admin.id)
+  company_admin (is_admin=True,  parent_id=super_admin.username)
+  regular_user  (is_admin=False, parent_id=company_admin.username)
 """
 
 import http
@@ -23,6 +23,7 @@ from src.api.v1.company.models import (
     CompanyCreate,
     CompanyDB,
     db_create_company,
+    db_delete_company,
     db_get_client_companies,
     db_get_companies,
     db_get_company,
@@ -33,11 +34,9 @@ from src.api.v1.user.models import User, UserDB
 
 
 def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
-    """Insert a UserDB row and return its UUID string."""
-    uid = str(uuid.uuid4())
+    """Insert a UserDB row and return its username."""
     db.add(
         UserDB(
-            id=uid,
             username=username,
             email=f"{username}@test.dev",
             full_name=username.title(),
@@ -48,7 +47,7 @@ def _make_user(db, *, username, is_admin, parent_id=None):  # noqa ANN001
         ),
     )
     db.flush()
-    return uid
+    return username
 
 
 def _make_company(db, *, name, owner_id=None):  # noqa ANN001
@@ -67,11 +66,10 @@ def _make_company(db, *, name, owner_id=None):  # noqa ANN001
     return cid
 
 
-def _as_user(db, uid):  # noqa ANN001
-    """Load a UserDB row by ID and return a Pydantic User instance."""
-    row = db.query(UserDB).filter(UserDB.id == uid).first()
+def _as_user(db, username):  # noqa ANN001
+    """Load a UserDB row by username and return a Pydantic User instance."""
+    row = db.query(UserDB).filter(UserDB.username == username).first()
     return User(
-        id=row.id,
         username=row.username,
         email=row.email,
         is_admin=row.is_admin,
@@ -264,3 +262,52 @@ def test_require_company_admin_rejects_regular_user(scenario):  # noqa ANN001
     with pytest.raises(HTTPException) as exc:
         _require_company_admin(_as_user(s["db"], s["regular_user_id"]))
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
+
+
+# ─── db_delete_company ────────────────────────────────────────────────────────
+
+
+def test_delete_company_super_admin_only_passes(scenario):  # noqa ANN001
+    """Super admin passes the _require_super_admin guard (precondition for delete)."""
+    s = scenario
+    _require_super_admin(_as_user(s["db"], s["super_admin_id"]))  # no exception
+
+
+def test_delete_company_company_admin_rejected(scenario):  # noqa ANN001
+    """Company admin is rejected by _require_super_admin and cannot delete a company."""
+    s = scenario
+    with pytest.raises(HTTPException) as exc:
+        _require_super_admin(_as_user(s["db"], s["company_admin_id"]))
+    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
+
+
+def test_delete_company_regular_user_rejected(scenario):  # noqa ANN001
+    """Regular user is rejected by _require_super_admin and cannot delete a company."""
+    s = scenario
+    with pytest.raises(HTTPException) as exc:
+        _require_super_admin(_as_user(s["db"], s["regular_user_id"]))
+    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
+
+
+def test_db_delete_company_removes_row(scenario):  # noqa ANN001
+    """db_delete_company removes the company row and returns True."""
+    s = scenario
+    result = db_delete_company(s["db"], s["solo_co_id"])
+    assert result is True
+    assert db_get_company(s["db"], s["solo_co_id"]) is None
+
+
+def test_db_delete_company_returns_false_for_missing(scenario):  # noqa ANN001
+    """db_delete_company returns False when the company ID does not exist."""
+    s = scenario
+    result = db_delete_company(s["db"], str(uuid.uuid4()))
+    assert result is False
+
+
+def test_db_delete_company_raises_409_when_cases_attached(scenario):  # noqa ANN001
+    """db_delete_company raises 409 Conflict when the company has cases attached."""
+    s = scenario
+    with pytest.raises(HTTPException) as exc:
+        db_delete_company(s["db"], s["client_a_id"])
+    assert exc.value.status_code == http.HTTPStatus.CONFLICT
+    assert "case" in exc.value.detail.lower()

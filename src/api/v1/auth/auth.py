@@ -73,6 +73,9 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     if not user.validate_password(password, user_db.password):
         return None
 
+    if not user.is_active:
+        return None
+
     return user
 
 

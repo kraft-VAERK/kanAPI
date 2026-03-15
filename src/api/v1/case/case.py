@@ -19,13 +19,18 @@ from src.api.v1.user.models import User, UserDB
 
 from .models import (
     Case,
+    CaseActivity,
     CaseCreate,
     CaseDB,
+    CaseUpdate,
     DocumentInfo,
     db_create_case,
     db_delete_case,
     db_get_case,
+    db_get_case_activities,
     db_get_cases_by_user,
+    db_log_activity,
+    db_update_case,
 )
 from .storage import delete_case_documents, list_case_documents, stream_case_document
 
@@ -55,8 +60,8 @@ async def get_my_cases(
     current_user: CurrentUser,
 ) -> list[Case]:
     """Get all cases belonging to the current authenticated user, filtered by OpenFGA viewer permission."""
-    cases = db_get_cases_by_user(db=db, user_id=current_user.id)
-    return await filter_by_permission(cases, current_user.id)
+    cases = db_get_cases_by_user(db=db, user_id=current_user.username)
+    return await filter_by_permission(cases, current_user.username)
 
 
 @router.get(
@@ -105,15 +110,16 @@ async def create_case(
             detail="Customer is required.",
         )
     case_id = str(uuid7())
-    result = db_create_case(db=db, case=case, user_id=current_user.id, case_id=case_id)
-    await write_tuple(current_user.id, 'creator', 'case', case_id)
+    result = db_create_case(db=db, case=case, user_id=current_user.username, case_id=case_id)
+    await write_tuple(current_user.username, 'creator', 'case', case_id)
     await write_tuple(case.company_id, 'company', 'case', case_id, subject_type='company')
     # If the creator has a parent admin, establish their FGA admin relation to the company
     # so they can delete cases created by their sub-users.
     if current_user.parent_id:
-        parent = db.query(UserDB).filter(UserDB.id == current_user.parent_id).first()
+        parent = db.query(UserDB).filter(UserDB.username == current_user.parent_id).first()
         if parent and parent.is_admin:
-            await write_tuple_safe(str(parent.id), 'admin', 'company', case.company_id)
+            await write_tuple_safe(parent.username, 'admin', 'company', case.company_id)
+    db_log_activity(db, case_id, current_user.username, 'case_created')
     return result
 
 
@@ -135,6 +141,51 @@ async def delete_case(
     delete_case_documents(case_id)
     await delete_tuple(creator_id, 'creator', 'case', case_id)
     await delete_tuple(company_id, 'company', 'case', case_id, subject_type='company')
+
+
+@router.patch(
+    '/{case_id}',
+    response_model=Case,
+    status_code=http.HTTPStatus.OK,
+    summary='Update a case',
+)
+async def update_case(
+    case_id: str,
+    case_update: CaseUpdate,
+    db: DbSession,
+    current_user: Annotated[User, Depends(require_permission('editor'))],
+) -> Case:
+    """Apply a partial update to a case and log field changes."""
+    old = _get_case_db_or_404(db, case_id)
+    # Capture values before db_update_case modifies the same ORM object in-place
+    old_status = old.status
+    old_responsible = old.responsible_person
+    result = db_update_case(db=db, case_id=case_id, case_update=case_update)
+    if not result:
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Case not found.')
+    update_data = case_update.model_dump(exclude_unset=True)
+    if 'status' in update_data and update_data['status'] != old_status:
+        db_log_activity(db, case_id, current_user.username, 'status_changed', f'{old_status} → {update_data["status"]}')
+    if 'responsible_person' in update_data and update_data['responsible_person'] != old_responsible:
+        detail = f'{old_responsible} → {update_data["responsible_person"]}'
+        db_log_activity(db, case_id, current_user.username, 'responsible_changed', detail)
+    return result
+
+
+@router.get(
+    '/{case_id}/activity',
+    response_model=list[CaseActivity],
+    status_code=http.HTTPStatus.OK,
+    summary='Get activity log for a case',
+)
+async def get_case_activity(
+    case_id: str,
+    db: DbSession,
+    _auth: Annotated[User, Depends(require_permission('viewer'))],
+) -> list[CaseActivity]:
+    """Return all activity entries for a case, oldest first."""
+    _get_case_db_or_404(db, case_id)
+    return db_get_case_activities(db, case_id)
 
 
 @router.get(

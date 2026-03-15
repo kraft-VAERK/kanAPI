@@ -1,5 +1,6 @@
 """Company model for API v1."""
 
+import http
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -90,3 +91,26 @@ def db_get_client_companies(db: Session, owner_id: str) -> list[Company]:
     """Return all companies owned by the given company."""
     rows = db.query(CompanyDB).filter(CompanyDB.owner_id == owner_id).all()
     return [Company.model_validate(r) for r in rows]
+
+
+def db_delete_company(db: Session, company_id: str) -> bool:
+    """Delete a company by ID. Returns False if not found. Raises 409 if the company has cases."""
+    from src.api.v1.case.models import CaseDB
+    try:
+        row = db.query(CompanyDB).filter(CompanyDB.id == company_id).first()
+        if not row:
+            return False
+        case_count = db.query(CaseDB).filter(CaseDB.company_id == company_id).count()
+        if case_count > 0:
+            raise HTTPException(
+                status_code=http.HTTPStatus.CONFLICT,
+                detail=f'Cannot delete company: {case_count} case(s) are attached to it.',
+            )
+        db.delete(row)
+        db.commit()
+        return True
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
