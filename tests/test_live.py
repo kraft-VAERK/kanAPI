@@ -250,10 +250,10 @@ def test_creator_can_delete_own_case() -> None:
 
 def test_admin_can_delete_subuser_case() -> None:
     """Company admin can delete a case created by one of their sub-users."""
-    # Login as admin and get their ID + a company
+    # Login as admin and get their username + a company
     s_admin = _session()
     admin = _login(s_admin, "admin@acme.dev", "acme123")
-    admin_id = admin["id"]
+    admin_username = admin["username"]
     companies = s_admin.get(f"{BASE}/company/").json()
     company_id = companies[0]["id"]
 
@@ -268,7 +268,7 @@ def test_admin_can_delete_subuser_case() -> None:
             "email": sub_email,
             "password": sub_password,
             "is_admin": False,
-            "parent_id": admin_id,
+            "parent_id": admin_username,
         },
     )
     assert r.status_code == 200, f"Sub-user creation failed: {r.text}"
@@ -325,6 +325,86 @@ def test_other_company_admin_cannot_delete_case() -> None:
     assert r.status_code == 403, f"Expected 403 but got {r.status_code}: {r.text}"
 
 
+# ─── Activity log ─────────────────────────────────────────────────────────────
+
+
+def test_create_case_logs_case_created() -> None:
+    """Creating a case writes a case_created activity entry."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    case = _create_case(s, company_id, customer="Activity Log Test")
+    try:
+        r = s.get(f"{BASE}/case/{case['id']}/activity")
+        assert r.status_code == 200, f"Activity fetch failed: {r.text}"
+        entries = r.json()
+        actions = [e["action"] for e in entries]
+        assert "case_created" in actions, f"case_created not in activity: {actions}"
+    finally:
+        s.delete(f"{BASE}/case/{case['id']}")
+
+
+def test_update_case_status_logs_status_changed() -> None:
+    """PATCHing a case's status writes a status_changed activity entry with old→new detail."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    case = _create_case(s, company_id, status="open", customer="Status Change Test")
+    try:
+        r = s.patch(f"{BASE}/case/{case['id']}", json={"status": "in_progress"})
+        assert r.status_code == 200, f"PATCH failed: {r.text}"
+        assert r.json()["status"] == "in_progress"
+
+        activity = s.get(f"{BASE}/case/{case['id']}/activity").json()
+        status_entry = next((e for e in activity if e["action"] == "status_changed"), None)
+        assert status_entry is not None, f"status_changed not found in activity: {activity}"
+        assert "open" in status_entry["detail"]
+        assert "in_progress" in status_entry["detail"]
+    finally:
+        s.delete(f"{BASE}/case/{case['id']}")
+
+
+def test_update_case_responsible_logs_responsible_changed() -> None:
+    """PATCHing responsible_person writes a responsible_changed activity entry."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    case = _create_case(s, company_id, responsible_person="Alice", customer="Responsible Change Test")
+    try:
+        r = s.patch(f"{BASE}/case/{case['id']}", json={"responsible_person": "Bob"})
+        assert r.status_code == 200, f"PATCH failed: {r.text}"
+
+        activity = s.get(f"{BASE}/case/{case['id']}/activity").json()
+        entry = next((e for e in activity if e["action"] == "responsible_changed"), None)
+        assert entry is not None, f"responsible_changed not found in activity: {activity}"
+        assert "Alice" in entry["detail"]
+        assert "Bob" in entry["detail"]
+    finally:
+        s.delete(f"{BASE}/case/{case['id']}")
+
+
+def test_activity_forbidden_without_viewer_access() -> None:
+    """User with no FGA relation to a case gets 403 on the activity endpoint."""
+    s_acme = _session()
+    _login(s_acme, "admin@acme.dev", "acme123")
+    companies = s_acme.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+    case = _create_case(s_acme, company_id, customer="Activity Access Test")
+    try:
+        s_globex = _session()
+        _login(s_globex, "admin@globex.dev", "globex123")
+        r = s_globex.get(f"{BASE}/case/{case['id']}/activity")
+        assert r.status_code == 403, f"Expected 403 for unauthorized user, got {r.status_code}"
+    finally:
+        s_acme.delete(f"{BASE}/case/{case['id']}")
+
+
 # ─── Company endpoints ────────────────────────────────────────────────────────
 
 
@@ -347,13 +427,62 @@ def test_create_company_requires_super_admin() -> None:
     assert r.status_code == 403
 
 
+def test_delete_company_requires_super_admin() -> None:
+    """Company admin and regular user get 403 when attempting to delete a company."""
+    # Super admin creates a company to use as target
+    s_super = _session()
+    _login(s_super, "superadmin@kanapi.dev", "super123")
+    r = s_super.post(f"{BASE}/company/", json={"name": "Delete Guard Test Co"})
+    assert r.status_code in (200, 201)
+    company_id = r.json()["id"]
+
+    try:
+        # Company admin gets 403
+        s_admin = _session()
+        _login(s_admin, "admin@acme.dev", "acme123")
+        r = s_admin.delete(f"{BASE}/company/{company_id}")
+        assert r.status_code == 403, f"Expected 403 for company admin, got {r.status_code}"
+
+        # Regular user gets 403
+        s_user = _session()
+        _login(s_user, "test@acme.dev", "test123")
+        r = s_user.delete(f"{BASE}/company/{company_id}")
+        assert r.status_code == 403, f"Expected 403 for regular user, got {r.status_code}"
+    finally:
+        s_super.delete(f"{BASE}/company/{company_id}")
+
+
+def test_delete_company_with_cases_returns_409() -> None:
+    """Deleting a company that has cases attached returns 409 Conflict."""
+    s = _session()
+    _login(s, "superadmin@kanapi.dev", "super123")
+
+    # Find a company that has cases
+    companies = s.get(f"{BASE}/company/").json()
+    for company in companies:
+        cases = s.get(f"{BASE}/company/{company['id']}/cases").json()
+        if cases:
+            r = s.delete(f"{BASE}/company/{company['id']}")
+            assert r.status_code == 409, f"Expected 409, got {r.status_code}: {r.text}"
+            assert "case" in r.json().get("detail", "").lower()
+            return
+
+    pytest.skip("No company with cases found — run: make seed")
+
+
 def test_super_admin_can_create_company() -> None:
-    """Super admin can create a new company."""
+    """Super admin can create a new company, then deletes it to leave no data behind."""
     s = _session()
     _login(s, "superadmin@kanapi.dev", "super123")
     r = s.post(f"{BASE}/company/", json={"name": "Live Test Company", "email": "live@test.dev"})
     assert r.status_code in (200, 201)
-    assert r.json()["name"] == "Live Test Company"
+    company = r.json()
+    assert company["name"] == "Live Test Company"
+    try:
+        r_del = s.delete(f"{BASE}/company/{company['id']}")
+        assert r_del.status_code == 204, f"Cleanup delete failed: {r_del.status_code} {r_del.text}"
+    finally:
+        pass  # best-effort cleanup — failure here is non-fatal for the assertion above
 
 
 # ─── Documents ────────────────────────────────────────────────────────────────
@@ -457,54 +586,52 @@ def _create_user(session: requests.Session, **kwargs: str) -> dict:
 
 
 def test_superadmin_can_get_user_by_id() -> None:
-    """Super admin can GET /user/{id} and receives the correct user payload."""
+    """Super admin can GET /user/{username} and receives the correct user payload."""
     s_super = _session()
     me = _login(s_super, "superadmin@kanapi.dev", "super123")  # noqa: F841
 
     # Create a throwaway user to fetch
     new_user = _create_user(s_super)
-    user_id = new_user["id"]
+    username = new_user["username"]
 
     try:
-        r = s_super.get(f"{BASE}/user/{user_id}")
+        r = s_super.get(f"{BASE}/user/{username}")
         assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
         data = r.json()
-        assert data["id"] == user_id
-        assert data["username"] == new_user["username"]
+        assert data["username"] == username
     finally:
         # clean up
-        s_super.delete(f"{BASE}/user/{user_id}")
+        s_super.delete(f"{BASE}/user/{username}")
 
 
 def test_nonadmin_cannot_get_user_by_id() -> None:
-    """A regular (non-admin) user gets 403 when calling GET /user/{id}."""
+    """A regular (non-admin) user gets 403 when calling GET /user/{username}."""
     s_super = _session()
     _login(s_super, "superadmin@kanapi.dev", "super123")
 
-    # Look up a real user ID (any user will do)
     all_users = s_super.get(f"{BASE}/user/all").json()
     assert all_users, "No users returned from /user/all"
-    some_id = all_users[0]["id"]
+    some_username = all_users[0]["username"]
 
     s_regular = _session()
     _login(s_regular, "test@acme.dev", "test123")
-    r = s_regular.get(f"{BASE}/user/{some_id}")
+    r = s_regular.get(f"{BASE}/user/{some_username}")
     assert r.status_code == 403, f"Expected 403, got {r.status_code}: {r.text}"
 
 
 def test_superadmin_can_delete_user() -> None:
-    """Super admin can DELETE /user/{id}; the user no longer appears in /user/all."""
+    """Super admin can DELETE /user/{username}; the user no longer appears in /user/all."""
     s_super = _session()
     _login(s_super, "superadmin@kanapi.dev", "super123")
 
     new_user = _create_user(s_super)
-    user_id = new_user["id"]
+    username = new_user["username"]
 
-    r = s_super.delete(f"{BASE}/user/{user_id}")
+    r = s_super.delete(f"{BASE}/user/{username}")
     assert r.status_code == 204, f"Expected 204, got {r.status_code}: {r.text}"
 
     # Verify the user is gone
-    r2 = s_super.get(f"{BASE}/user/{user_id}")
+    r2 = s_super.get(f"{BASE}/user/{username}")
     assert r2.status_code == 404, f"User still reachable after deletion: {r2.status_code}"
 
 
@@ -513,7 +640,7 @@ def test_cannot_delete_self() -> None:
     s_super = _session()
     me = _login(s_super, "superadmin@kanapi.dev", "super123")
 
-    r = s_super.delete(f"{BASE}/user/{me['id']}")
+    r = s_super.delete(f"{BASE}/user/{me['username']}")
     assert r.status_code == 400, f"Expected 400 for self-delete, got {r.status_code}: {r.text}"
     assert "own account" in r.json().get("detail", "").lower()
 
@@ -523,20 +650,20 @@ def test_nonadmin_cannot_delete_user() -> None:
     s_super = _session()
     _login(s_super, "superadmin@kanapi.dev", "super123")
     all_users = s_super.get(f"{BASE}/user/all").json()
-    some_id = all_users[0]["id"]
+    some_username = all_users[0]["username"]
 
     s_regular = _session()
     _login(s_regular, "test@acme.dev", "test123")
-    r = s_regular.delete(f"{BASE}/user/{some_id}")
+    r = s_regular.delete(f"{BASE}/user/{some_username}")
     assert r.status_code == 403, f"Expected 403, got {r.status_code}: {r.text}"
 
 
 def test_delete_nonexistent_user_returns_404() -> None:
-    """Deleting a user ID that doesn't exist returns 404."""
+    """Deleting a username that doesn't exist returns 404."""
     s_super = _session()
     _login(s_super, "superadmin@kanapi.dev", "super123")
 
-    r = s_super.delete(f"{BASE}/user/{uuid.uuid4()}")
+    r = s_super.delete(f"{BASE}/user/nonexistent_user_{uuid.uuid4().hex[:8]}")
     assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
 
 
@@ -551,8 +678,8 @@ def test_delete_user_with_cases_returns_409() -> None:
     if not users_with_cases:
         pytest.skip("No sub-users with cases available")
 
-    target_id = users_with_cases[0]["id"]
-    r = s_admin.delete(f"{BASE}/user/{target_id}")
+    target_username = users_with_cases[0]["username"]
+    r = s_admin.delete(f"{BASE}/user/{target_username}")
     assert r.status_code == 409, f"Expected 409 for user-with-cases delete, got {r.status_code}: {r.text}"
     assert "cases" in r.json().get("detail", "").lower()
 
