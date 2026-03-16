@@ -23,7 +23,7 @@ class UserDB(Base):
     password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False, nullable=False)
-    parent_id = Column(String, ForeignKey('users.username', ondelete='CASCADE'), nullable=True)
+    parent_id = Column(String, ForeignKey('users.username', ondelete='CASCADE', onupdate='CASCADE'), nullable=True)
 
 
 class User(pydantic.BaseModel):
@@ -62,14 +62,16 @@ class User(pydantic.BaseModel):
         return hash((self.username, self.email, self.full_name, self.is_active))
 
     def hash_password(self, password: str) -> str:
-        """Hash the password using a secure hashing algorithm."""
-        import hashlib
+        """Hash the password using bcrypt."""
+        import bcrypt
 
-        return hashlib.sha256(password.encode()).hexdigest()
+        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
     def validate_password(self, password: str, db_password: str) -> bool:
         """Validate the provided password against the stored hashed password."""
-        return db_password == self.hash_password(password)
+        import bcrypt
+
+        return bcrypt.checkpw(password.encode(), db_password.encode())
 
 
 class UserCreate(pydantic.BaseModel):
@@ -157,8 +159,7 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
         db.refresh(user_db)
 
         return User.model_validate(user_db)
-    except Exception as e:
-        print(f"Error creating user: {e}")
+    except Exception:
         db.rollback()
         raise
     finally:
@@ -180,8 +181,7 @@ def db_delete_user(db: Session, user_delete: UserDelete) -> bool:
         db.delete(user_db)
         db.commit()
         return True
-    except Exception as e:
-        print(f"Error deleting user: {e}")
+    except Exception:
         db.rollback()
         raise
     finally:

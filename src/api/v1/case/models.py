@@ -6,7 +6,7 @@ from typing import List, Optional
 import pydantic
 from fastapi import HTTPException
 from pydantic import ConfigDict
-from sqlalchemy import Column, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, or_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -21,12 +21,13 @@ class CaseDB(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     responsible_person = Column(String, nullable=False)
-    responsible_user_id = Column(String, ForeignKey("users.username"), nullable=True)
+    responsible_user_id = Column(String, ForeignKey("users.username", onupdate='CASCADE'), nullable=True)
     status = Column(String, nullable=False)
     customer = Column(String, nullable=False)
+    archived = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=True)
-    user_id = Column(String, ForeignKey("users.username"), nullable=False)
+    user_id = Column(String, ForeignKey("users.username", onupdate='CASCADE'), nullable=False)
     company_id = Column(UUID(as_uuid=False), ForeignKey("companies.id"), nullable=False)
 
 
@@ -54,6 +55,7 @@ class CaseUpdate(pydantic.BaseModel):
     responsible_person: Optional[str] = None
     status: Optional[str] = None
     customer: Optional[str] = None
+    archived: Optional[bool] = None
     updated_at: Optional[datetime] = None
 
 
@@ -92,6 +94,7 @@ class Case(pydantic.BaseModel):
     responsible_user_id: Optional[str] = None
     status: str
     customer: str
+    archived: bool = False
     company_id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -117,6 +120,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
             responsible_user_id=case.responsible_user_id,
             status=case.status,
             customer=case.customer,
+            archived=False,
             company_id=case.company_id,
             created_at=datetime.now(timezone.utc),
             user_id=user_id,
@@ -130,6 +134,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
             responsible_user_id=db_case.responsible_user_id,
             status=db_case.status,
             customer=db_case.customer,
+            archived=db_case.archived,
             company_id=db_case.company_id,
             created_at=db_case.created_at,
             updated_at=db_case.updated_at,
@@ -158,6 +163,7 @@ def db_get_case(db: Session, case_id: str) -> Optional[Case]:
             responsible_user_id=db_case.responsible_user_id,
             status=db_case.status,
             customer=db_case.customer,
+            archived=db_case.archived,
             company_id=db_case.company_id,
             created_at=db_case.created_at,
             updated_at=db_case.updated_at,
@@ -185,6 +191,7 @@ def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
             responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
+            archived=c.archived,
             company_id=c.company_id,
             created_at=c.created_at,
             updated_at=c.updated_at,
@@ -222,6 +229,7 @@ def db_update_case(
                 responsible_person=db_case.responsible_person,
                 status=db_case.status,
                 customer=db_case.customer,
+                archived=db_case.archived,
                 company_id=db_case.company_id,
                 created_at=db_case.created_at,
                 updated_at=db_case.updated_at,
@@ -251,6 +259,56 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
             responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
+            archived=c.archived,
+            company_id=c.company_id,
+            created_at=c.created_at,
+            updated_at=c.updated_at,
+        )
+        for c in db_cases
+    ]
+
+
+def db_search_cases_by_user(
+    db: Session,
+    user_id: str,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    archived: Optional[bool] = None,
+) -> List[Case]:
+    """Search cases for a user with optional filters applied in the database.
+
+    Args:
+        db: Database session
+        user_id: ID of the user (case creator)
+        q: Free-text search on customer and responsible_person (ILIKE)
+        status: Exact match on status column
+        archived: Exact match on archived column
+
+    Returns:
+        Filtered list of cases
+
+    """
+    query = db.query(CaseDB).filter(CaseDB.user_id == user_id)
+    if q:
+        query = query.filter(
+            or_(
+                CaseDB.customer.ilike(f'%{q}%'),
+                CaseDB.responsible_person.ilike(f'%{q}%'),
+            ),
+        )
+    if status is not None:
+        query = query.filter(CaseDB.status == status)
+    if archived is not None:
+        query = query.filter(CaseDB.archived == archived)
+    db_cases = query.all()
+    return [
+        Case(
+            id=c.id,
+            responsible_person=c.responsible_person,
+            responsible_user_id=c.responsible_user_id,
+            status=c.status,
+            customer=c.customer,
+            archived=c.archived,
             company_id=c.company_id,
             created_at=c.created_at,
             updated_at=c.updated_at,
@@ -269,6 +327,7 @@ def db_get_cases_by_responsible_user(db: Session, user_id: str) -> List[Case]:
             responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
+            archived=c.archived,
             company_id=c.company_id,
             created_at=c.created_at,
             updated_at=c.updated_at,
@@ -301,7 +360,7 @@ class CaseActivityDB(Base):
 
     id = Column(UUID(as_uuid=False), primary_key=True, index=True)
     case_id = Column(UUID(as_uuid=False), ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, index=True)
-    user_id = Column(String, ForeignKey('users.username', ondelete='SET NULL'), nullable=True)
+    user_id = Column(String, ForeignKey('users.username', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
     action = Column(String, nullable=False)
     detail = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)

@@ -15,7 +15,7 @@ from fastapi import HTTPException
 
 from src.api.v1.case.models import CaseDB
 from src.api.v1.user.models import User, UserDB, UserUpdate, db_update_user
-from src.api.v1.user.user import delete_user_by_id, get_user
+from src.api.v1.user.user import delete_user_by_id, get_user, update_user
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,14 +82,14 @@ def test_db_update_user_returns_none_for_missing_id(scenario):  # noqa ANN001
 
 
 def test_db_update_user_hashes_password(scenario):  # noqa ANN001
-    """db_update_user stores a SHA-256 hash, not the plaintext password."""
-    import hashlib
+    """db_update_user stores a bcrypt hash, not the plaintext password."""
+    import bcrypt
 
     s = scenario
     target = s["regular_user"]
     db_update_user(s["db"], target.username, UserUpdate(password="newpass"))
     row = s["db"].query(UserDB).filter(UserDB.username == target.username).first()
-    assert row.password == hashlib.sha256(b"newpass").hexdigest()
+    assert bcrypt.checkpw(b"newpass", row.password.encode())
 
 
 # ─── delete_user_by_id ────────────────────────────────────────────────────────
@@ -180,6 +180,45 @@ async def test_delete_user_with_cases_gets_409(scenario, db):  # noqa ANN001
     with pytest.raises(HTTPException) as exc:
         await delete_user_by_id(target.username, caller, db)
     assert exc.value.status_code == http.HTTPStatus.CONFLICT
+
+
+# ─── update_user (username change guard) ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_super_admin_can_change_username(scenario) -> None:  # noqa: ANN001
+    """Super admin can rename any user."""
+    s = scenario
+    caller = _as_user(s["super_admin"])
+    target = s["regular_user"]
+
+    result = await update_user(target.username, UserUpdate(username="renamed_user"), caller, s["db"])
+
+    assert result.username == "renamed_user"
+
+
+@pytest.mark.asyncio
+async def test_company_admin_cannot_change_username(scenario) -> None:  # noqa: ANN001
+    """Company admin PATCH succeeds but the username field is silently ignored."""
+    s = scenario
+    caller = _as_user(s["company_admin"])
+    target = s["regular_user"]
+    original_username = target.username
+
+    result = await update_user(target.username, UserUpdate(username="hacked_name"), caller, s["db"])
+
+    assert result.username == original_username
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_update_user(scenario) -> None:  # noqa: ANN001
+    """A non-admin user gets 403 when attempting any update."""
+    s = scenario
+    caller = _as_user(s["regular_user"])
+
+    with pytest.raises(HTTPException) as exc:
+        await update_user(s["company_admin"].username, UserUpdate(username="hacked_name"), caller, s["db"])
+    assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 
 # ─── get_user ─────────────────────────────────────────────────────────────────

@@ -10,7 +10,6 @@ Run via:  make seed
 """
 
 import asyncio
-import hashlib
 import io
 import random
 from datetime import datetime, timezone
@@ -34,7 +33,9 @@ STATUSES = ["open", "pending", "in_progress", "closed"]
 
 
 def _hash(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    import bcrypt
+
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def _add_user(

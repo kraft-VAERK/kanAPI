@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import http
+import logging
 import os
 from typing import TYPE_CHECKING, Annotated
 
@@ -19,6 +19,8 @@ from openfga_sdk.client.models import (
 
 from src.api.v1.auth.auth import get_current_user_from_cookie
 from src.api.v1.user.models import User  # noqa #TC001
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -111,9 +113,16 @@ async def write_tuple_safe(
     object_id: str,
     subject_type: str = "user",
 ) -> None:
-    """Write a relationship tuple, silently ignoring errors if it already exists."""
-    with contextlib.suppress(Exception):
+    """Write a relationship tuple, silently ignoring duplicate errors only."""
+    try:
         await write_tuple(subject_id, relation, object_type, object_id, subject_type=subject_type)
+    except Exception as e:
+        err_msg = str(e).lower()
+        if 'already exists' in err_msg or 'duplicate' in err_msg or 'cannot write' in err_msg:
+            return
+        logger.error("FGA write_tuple_safe failed: %s (subject=%s:%s, relation=%s, object=%s:%s)",
+                      e, subject_type, subject_id, relation, object_type, object_id)
+        raise
 
 
 async def filter_by_permission(cases: list, user_id: str, relation: str = "viewer") -> list:

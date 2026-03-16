@@ -76,7 +76,6 @@ def db_create_customer(db: Session, customer: CustomerCreate) -> Customer:
 
         # Convert to Pydantic model and return
         return Customer.model_validate(db_customer)
-    except Exception as e:
-        print(f"Error creating customer: {e}")
+    except Exception:
         db.rollback()
         raise

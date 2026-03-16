@@ -3,19 +3,24 @@
 This module provides functions for authenticating users and managing JWT tokens.
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Annotated, Optional
 
 import jwt
 from dotenv import load_dotenv
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
 from src.api.v1.user.models import User, UserDB
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,12 +29,21 @@ load_dotenv()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # Secret key for JWT token signing
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this-in-production")
+_default_secret = os.getenv("JWT_SECRET_KEY")
+if not _default_secret:
+    raise RuntimeError("JWT_SECRET_KEY environment variable must be set")
+SECRET_KEY = _default_secret
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
+_SECURE_COOKIES = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+
+# Rate limiter — disabled by default (local dev). Set AUTH_RATE_LIMIT in production (e.g. "10/minute").
+_AUTH_RATE_LIMIT = os.getenv("AUTH_RATE_LIMIT", "")
+_RATE_LIMIT_ENABLED = bool(_AUTH_RATE_LIMIT)
+limiter = Limiter(key_func=get_remote_address, enabled=_RATE_LIMIT_ENABLED)
 
 
 class Token(BaseModel):
@@ -190,7 +204,9 @@ async def get_current_user_from_cookie(
 
 
 @router.post("/token", response_model=Token)
+@limiter.limit(_AUTH_RATE_LIMIT or "10/minute")
 async def login_for_access_token(
+    request: Request,  # noqa: ARG001 — required by slowapi rate limiter
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)],
@@ -198,6 +214,7 @@ async def login_for_access_token(
     """Authenticate user and return an access token.
 
     Args:
+        request: FastAPI request object (used by rate limiter)
         response: FastAPI response object for setting cookies
         form_data: OAuth2 password request form
         db: SQLAlchemy database session
@@ -232,14 +249,16 @@ async def login_for_access_token(
         max_age=cookie_expires,
         expires=cookie_expires,
         samesite="lax",
-        secure=False,  # Set to True in production with HTTPS
+        secure=_SECURE_COOKIES,
     )
 
     return Token(access_token=access_token, token_type="bearer")
 
 
 @router.post("/login")
+@limiter.limit(_AUTH_RATE_LIMIT or "10/minute")
 async def login(
+    request: Request,  # noqa: ARG001 — required by slowapi rate limiter
     response: Response,
     login_data: LoginRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -247,6 +266,7 @@ async def login(
     """Login user with email and password.
 
     Args:
+        request: FastAPI request object (used by rate limiter)
         response: FastAPI response object for setting cookies
         login_data: Login data containing email and password
         db: SQLAlchemy database session
@@ -280,7 +300,7 @@ async def login(
         max_age=cookie_expires,
         expires=cookie_expires,
         samesite="lax",
-        secure=False,  # Set to True in production with HTTPS
+        secure=_SECURE_COOKIES,
     )
 
     return {"message": "Login successful"}

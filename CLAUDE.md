@@ -65,7 +65,11 @@ FastAPI app at `src/api/main.py`. All routes under `/api/v1`. Startup calls `cre
 kanAPI/
 ├── frontend/        # React/Vite SPA
 │   ├── src/
-│   │   ├── pages/   # Login.jsx, Register.jsx, Dashboard.jsx
+│   │   ├── pages/
+│   │   │   ├── dashboard/   # Role-specific views + shared components
+│   │   │   ├── Dashboard.jsx  # Thin auth wrapper; delegates to dashboard/ components
+│   │   │   ├── Login.jsx
+│   │   │   └── Register.jsx
 │   │   ├── App.jsx  # BrowserRouter + Routes
 │   │   └── index.css
 │   ├── dist/        # Built output (served by FastAPI or Nginx)
@@ -90,19 +94,20 @@ kanAPI/
 ### User (`users` table)
 | Field | Type | Notes |
 |-------|------|-------|
-| `id` | UUID | uuid7, PK |
-| `username` | String | unique |
+| `username` | String | PK — also used as FK target by `cases.user_id`, `case_activities.user_id` |
 | `email` | String | unique |
 | `full_name` | String | nullable |
-| `password` | String | SHA-256 hashed |
+| `password` | String | bcrypt hashed |
 | `is_active` | Boolean | default True |
 | `is_admin` | Boolean | default False |
-| `parent_id` | UUID | FK → users.id (self-referential), nullable |
+| `parent_id` | String | FK → users.username (self-referential), nullable |
+
+> No `id` column — `username` is the primary key. `parent_id` stores the **username** (not a UUID) of the parent user.
 
 **Role derivation** (from `is_admin` + `parent_id`):
 - Super admin: `is_admin=True`, `parent_id=NULL`
-- Company admin: `is_admin=True`, `parent_id=<super_admin.id>`
-- Regular sub-user: `is_admin=False`, `parent_id=<company_admin.id>`
+- Company admin: `is_admin=True`, `parent_id=<super_admin.username>`
+- Regular sub-user: `is_admin=False`, `parent_id=<company_admin.username>`
 
 ### Company (`companies` table)
 | Field | Type | Notes |
@@ -194,14 +199,18 @@ All endpoints under `/api/v1`.
 ### User (`/user`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/user/create` | — | Create a user (no auth guard) |
-| GET | `/user/delete` | — | Delete a user (no auth guard, uses GET+body — legacy) |
+| POST | `/user/create` | cookie (admin) | Create a user |
+| GET | `/user/delete` | cookie (admin) | Delete a user (uses GET+body — legacy) |
+| PATCH | `/user/{user_id}` | cookie (admin) | Update a user |
+| DELETE | `/user/{user_id}` | cookie (admin) | Delete a user by ID |
+| GET | `/user/{user_id}/cases` | cookie | Get cases for a user |
+| GET | `/user/{user_id}` | cookie (admin) | Get a user by ID |
 | GET | `/user/all` | cookie | List all users |
 
 ### Customer (`/customer`)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/customer/create` | — | Create a customer (no auth guard) |
+| POST | `/customer/create` | cookie | Create a customer |
 
 ### Health (`/health`)
 | Method | Path | Description |
@@ -239,7 +248,7 @@ OpenFGA runs in Docker (port 8080, playground at 3000). Required env vars: `FGA_
 - `check_permission(user_id, relation, object_type, object_id)` → bool
 - `write_tuple(subject_id, relation, object_type, object_id, subject_type='user')`
 - `delete_tuple(...)` — same signature
-- `write_tuple_safe(...)` — write, silently ignore duplicate errors
+- `write_tuple_safe(...)` — write, suppress duplicate errors only (logs and re-raises other failures)
 - `filter_by_permission(cases, user_id, relation='viewer')` — batch_check filter
 - `require_permission(relation, object_type='case')` — FastAPI dependency factory (raises 403)
 
@@ -255,6 +264,7 @@ Helpers in `src/api/v1/case/storage.py`:
 - `ensure_bucket()` — called at startup
 - `list_case_documents(case_id)` → `list[{name, size, last_modified}]`
 - `stream_case_document(case_id, filename)` → `(HTTPResponse, content_type)`
+- `delete_case_documents(case_id)` — deletes all objects under `cases/{case_id}/` (called on case delete)
 
 Documents are uploaded only via seed (`make seed`) — no upload endpoint exists yet.
 
@@ -272,11 +282,12 @@ Connection + `Base` in `src/api/db/database.py`. All ORM models must be imported
 
 ## Authentication
 
-Cookie-based JWT (`session` httponly cookie, 60 min expiry). `JWT_SECRET_KEY` + `JWT_ALGORITHM` from env (default: HS256).
+Cookie-based JWT (`session` httponly cookie, 60 min expiry). `JWT_SECRET_KEY` is **required** (no default — app refuses to start without it). `JWT_ALGORITHM` defaults to HS256. Cookie `secure` flag controlled by `COOKIE_SECURE` env var (set `true` in production).
 
 - Primary auth dependency: `get_current_user_from_cookie` in `src/api/v1/auth/auth.py`
 - Also available: `get_current_user` (Bearer token, for Swagger)
-- Passwords: SHA-256 via `User.hash_password()`
+- Passwords: bcrypt via `User.hash_password()`
+- Rate limiting: disabled by default (local dev). Set `AUTH_RATE_LIMIT` env var in production (e.g. `10/minute`) to enable via slowapi
 
 ---
 
@@ -296,9 +307,12 @@ All navigation is URL-based — no pure React state routing. React Router v6.
 | `/dashboard/customers` | `Dashboard` | Customers tab |
 | `/dashboard/customers/:customer` | `Dashboard` | Filtered cases for a customer |
 | `/dashboard/users` | `Dashboard` | Users tab (company admin only) |
+| `/dashboard/profile` | `Dashboard` | Current user's profile |
 | `/company/:companyId` | `Dashboard` | Super admin: company detail (cases tab) |
 | `/company/:companyId/clients` | `Dashboard` | Super admin: clients tab |
 | `/company/:companyId/clients/:customer` | `Dashboard` | Super admin: filtered client cases |
+| `/company/:companyId/users` | `Dashboard` | Super admin: users for a company |
+| `/user/:userId` | `Dashboard` | User profile view |
 | `/case/:caseId` | `Dashboard` | Case detail page (any role) |
 | `*` | redirect → `/` | |
 
@@ -328,14 +342,29 @@ Case navigation: `navigate(\`/case/${c.id}\`, { state: { case: c } })` — passe
 
 **All roles:** `/case/:caseId` → `CaseDetailPage` — case fields + documents list + Delete (with confirm step)
 
-### Shared frontend components (all in `frontend/src/pages/Dashboard.jsx`)
+### Frontend component structure
+
+`Dashboard.jsx` is a thin auth wrapper: fetches `/auth/me`, then renders the appropriate role-specific component. All view logic lives in `frontend/src/pages/dashboard/`:
+
+- `SuperAdminDashboard` — companies list + company drill-down (cases, clients, users tabs)
+- `CompanyAdminDashboard` — cases, customers, users tabs for company admin
+- `UserDashboard` — cases + customers tabs for regular users; includes `CaseSearchBar`
+- `CaseDetailPage` — case fields + activity timeline + documents; uses `location.state?.case` first, fetches on direct URL load
+- `ProfileView` — current user's own profile
+- `UserProfileView` — admin view of another user's profile
+
+**Shared components** (all in `frontend/src/pages/dashboard/`):
 - `CasesTable` — ID (clickable → `/case/:id`), Customer (clickable → customer URL), Responsible, Status, Created
 - `CustomersTable` — Name, Case count (derived in memory)
 - `DocumentsTable` — File, Size, Modified, Download button
-- `CaseDetailPage` — uses `location.state?.case` first, fetches only on direct URL load
+- `ActivityTimeline` — ordered list of `case_activities` entries
+- `CaseDetail` — read/edit fields for a single case (used inside `CaseDetailPage`)
+- `CaseSearchBar` — filter/search input for cases
 - `CreateCaseModal` — `POST /case/create`; props: `fixedCompanyId`, `fixedCustomer`, `users` (dropdown) or `currentUsername` (read-only)
 - `CreateCompanyModal` — `POST /company/`; optional owner dropdown
 - `Pagination` — hides when ≤1 page, 10 items/page (`PAGE_SIZE = 10`)
+- `constants.js` — `API` base URL, `PAGE_SIZE`
+- `utils.js` — shared utility functions
 
 ---
 
@@ -395,6 +424,8 @@ async def update_case(
 - Reuse `DbSession` and `CurrentUser` annotated dependencies defined at module level in `case.py`
 - All case endpoints require authentication — no public endpoints on case routes
 - Use `Depends(require_permission('<relation>'))` for FGA checks; call `await write_tuple(...)` after creating a resource
+- Use `_get_case_db_or_404(db, case_id)` to fetch the raw `CaseDB` row before mutating; it raises 404 automatically
+- When you need the current user's identity in an endpoint that also uses `require_permission`, use `current_user: Annotated[User, Depends(require_permission(...))]` instead of `_auth` so the user object is accessible for logging
 
 **Activity logging** — call `db_log_activity(db, case_id, user_id, action, detail=None)` after mutating state. Actions are free-form strings; keep them snake_case.
 

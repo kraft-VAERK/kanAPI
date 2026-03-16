@@ -63,6 +63,12 @@ CASE_AUTH_MODEL = {
                         'child': [
                             {'this': {}},
                             {'computedUserset': {'relation': 'creator'}},
+                            {
+                                'tupleToUserset': {
+                                    'tupleset': {'relation': 'company'},
+                                    'computedUserset': {'relation': 'admin'},
+                                },
+                            },
                         ],
                     },
                 },
@@ -97,6 +103,7 @@ CASE_AUTH_MODEL = {
                         'directly_related_user_types': [
                             {'type': 'user'},
                             {'type': 'company', 'relation': 'member'},
+                            {'type': 'company', 'relation': 'admin'},
                         ],
                     },
                     'deleter': {

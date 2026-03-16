@@ -5,9 +5,9 @@ including functions to get cases by ID and generate fake case data.
 """
 
 import http
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException, Query  # type: ignore
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
@@ -28,11 +28,11 @@ from .models import (
     db_delete_case,
     db_get_case,
     db_get_case_activities,
-    db_get_cases_by_user,
     db_log_activity,
+    db_search_cases_by_user,
     db_update_case,
 )
-from .storage import delete_case_documents, list_case_documents, stream_case_document
+from .storage import delete_case_document, delete_case_documents, list_case_documents, stream_case_document
 
 router = APIRouter(prefix="/case", tags=["case"])
 
@@ -58,9 +58,12 @@ def _get_case_db_or_404(db: Session, case_id: str) -> CaseDB:
 async def get_my_cases(
     db: DbSession,
     current_user: CurrentUser,
+    q: Optional[str] = Query(default=None, description='Search customer or responsible person (case-insensitive)'),
+    status: Optional[str] = Query(default=None, description='Filter by exact status value'),
+    archived: Optional[bool] = Query(default=None, description='Filter by archived state'),
 ) -> list[Case]:
-    """Get all cases belonging to the current authenticated user, filtered by OpenFGA viewer permission."""
-    cases = db_get_cases_by_user(db=db, user_id=current_user.username)
+    """Get cases for the current user, with optional DB-level filtering, then FGA viewer check."""
+    cases = db_search_cases_by_user(db=db, user_id=current_user.username, q=q, status=status, archived=archived)
     return await filter_by_permission(cases, current_user.username)
 
 
@@ -169,6 +172,9 @@ async def update_case(
     if 'responsible_person' in update_data and update_data['responsible_person'] != old_responsible:
         detail = f'{old_responsible} → {update_data["responsible_person"]}'
         db_log_activity(db, case_id, current_user.username, 'responsible_changed', detail)
+    if 'archived' in update_data:
+        action = 'case_archived' if update_data['archived'] else 'case_unarchived'
+        db_log_activity(db, case_id, current_user.username, action)
     return result
 
 
@@ -202,6 +208,23 @@ async def get_case_documents(
     """Return metadata for all documents stored in MinIO under cases/{case_id}/."""
     _get_case_db_or_404(db, case_id)
     return list_case_documents(case_id)
+
+
+@router.delete(
+    '/{case_id}/documents/{filename}',
+    status_code=http.HTTPStatus.NO_CONTENT,
+    summary='Delete a document attached to a case',
+)
+async def delete_case_document_endpoint(
+    case_id: str,
+    filename: str,
+    db: DbSession,
+    current_user: Annotated[User, Depends(require_permission('editor'))],
+) -> None:
+    """Delete a single document from MinIO and log the action."""
+    _get_case_db_or_404(db, case_id)
+    delete_case_document(case_id, filename)
+    db_log_activity(db, case_id, current_user.username, 'document_deleted', filename)
 
 
 @router.get(

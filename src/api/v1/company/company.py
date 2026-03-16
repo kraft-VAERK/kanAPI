@@ -101,9 +101,8 @@ async def get_my_company_cases(current_user: CurrentUser, db: DbSession) -> list
     sub_user_ids = [
         u.username for u in db.query(UserDB).filter(UserDB.parent_id == current_user.username).all()
     ]
-    if not sub_user_ids:
-        return []
-    db_cases = db.query(CaseDB).filter(CaseDB.user_id.in_(sub_user_ids)).all()
+    all_user_ids = [current_user.username, *sub_user_ids]
+    db_cases = db.query(CaseDB).filter(CaseDB.user_id.in_(all_user_ids)).all()
     return [
         Case(
             id=c.id,

@@ -17,6 +17,8 @@ dependencies = [
     "minio",
     "requests",
     "openfga-sdk",
+    "bcrypt",
+    "slowapi",
 ]
 
 [dependency-groups]

@@ -46,6 +46,11 @@ def delete_case_documents(case_id: str) -> None:
         pass
 
 
+def delete_case_document(case_id: str, filename: str) -> None:
+    """Delete a single document from MinIO."""
+    _client.remove_object(BUCKET, f'cases/{case_id}/{filename}')
+
+
 def stream_case_document(case_id: str, filename: str) -> tuple:
     """Return (HTTPResponse, content_type) for the requested document."""
     obj = _client.get_object(BUCKET, f'cases/{case_id}/{filename}')
