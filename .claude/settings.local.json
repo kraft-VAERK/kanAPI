@@ -63,7 +63,18 @@
       "Bash(.venv/bin/python3 -c \":*)",
       "Bash(.venv/bin/python3 -c \"from openfga_sdk.client import OpenFgaClient; print\\([m for m in dir\\(OpenFgaClient\\) if ''read'' in m.lower\\(\\)]\\)\")",
       "Bash(.venv/bin/python3 -c \"import openfga_sdk.client.models as m; print\\(dir\\(m\\)\\)\")",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "Bash(rtk curl:*)",
+      "Bash(rtk proxy:*)",
+      "Bash(python3 -c \"import json,sys; cases=json.load\\(sys.stdin\\); print\\(cases[0][''''company_id'''']\\)\")",
+      "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres -c \"ALTER TABLE cases ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;\")",
+      "Bash(CASE_ID=\"069b8149-8a58-7d0b-8000-deb10743ef5c\")",
+      "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres -c \"\\\\d cases\")",
+      "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres <<'SQL':*)",
+      "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres -c \"\\\\d case_activities\")",
+      "Bash(rtk cat:*)",
+      "Bash(git commit:*)"
     ]
-  }
+  },
+  "model": "sonnet[1m]"
 }

@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.frontend.pid
+.backend.pid
+.claude/settings.local.json
 
 # Distribution / packaging
 dist/
@@ -58,3 +61,4 @@ Thumbs.db
 # Frontend
 frontend/node_modules/
 frontend/dist/
+.frontend.pid
