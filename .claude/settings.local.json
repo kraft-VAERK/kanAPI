@@ -73,8 +73,8 @@
       "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres <<'SQL':*)",
       "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres -c \"\\\\d case_activities\")",
       "Bash(rtk cat:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(rtk make:*)"
     ]
-  },
-  "model": "sonnet[1m]"
+  }
 }

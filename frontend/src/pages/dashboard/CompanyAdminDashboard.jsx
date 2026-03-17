@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { API, PAGE_SIZE } from "./constants";
 import { CasesTable } from "./CasesTable";
+import { CaseSearchBar } from "./CaseSearchBar";
 import { CustomersTable } from "./CustomersTable";
 import { Pagination } from "./Pagination";
 import { CreateCaseModal } from "./CreateCaseModal";
@@ -23,15 +24,32 @@ export function CompanyAdminDashboard({ user }) {
   const [users, setUsers] = useState([]);
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchStatus, setSearchStatus] = useState("");
+  const [searchArchived, setSearchArchived] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
 
-  function loadCases() {
-    fetch(`${API}/company/my-cases`, { credentials: "include" })
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQ), 300);
+    return () => clearTimeout(t);
+  }, [searchQ]);
+
+  function loadCases(q, status, archived) {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (archived !== "") params.set("archived", archived);
+    const qs = params.toString();
+    fetch(`${API}/company/my-cases${qs ? `?${qs}` : ""}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setCases);
   }
 
   useEffect(() => {
-    loadCases();
+    loadCases(debouncedQ, searchStatus, searchArchived);
+  }, [debouncedQ, searchStatus, searchArchived]);
+
+  useEffect(() => {
     fetch(`${API}/company/my-users`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setUsers);
@@ -39,7 +57,7 @@ export function CompanyAdminDashboard({ user }) {
 
   useEffect(() => {
     setPage(1);
-  }, [tab, customer]);
+  }, [tab, customer, debouncedQ, searchStatus, searchArchived]);
 
   const customerMap = {};
   for (const c of cases)
@@ -90,6 +108,14 @@ export function CompanyAdminDashboard({ user }) {
       {tab === "cases" && (
         <>
           <h2>All Cases</h2>
+          <CaseSearchBar
+            q={searchQ}
+            onQChange={setSearchQ}
+            status={searchStatus}
+            onStatusChange={setSearchStatus}
+            archived={searchArchived}
+            onArchivedChange={setSearchArchived}
+          />
           {cases.length === 0 ? (
             <p className="no-cases">No cases found.</p>
           ) : (
@@ -180,7 +206,7 @@ export function CompanyAdminDashboard({ user }) {
               onClose={() => setShowCreate(false)}
               onCreated={() => {
                 setShowCreate(false);
-                loadCases();
+                loadCases(debouncedQ, searchStatus, searchArchived);
               }}
             />
           )}

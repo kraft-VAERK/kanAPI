@@ -117,6 +117,23 @@ body {
 
 .dashboard-header button:hover { background: #f0f0f0; }
 
+.toast-success {
+  background: #27ae60;
+  color: #fff;
+  padding: 0.35rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  animation: toast-fade 3s ease-in-out;
+}
+
+@keyframes toast-fade {
+  0% { opacity: 0; transform: translateY(-4px); }
+  10% { opacity: 1; transform: translateY(0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 .dashboard-main {
   padding: 2rem 1.5rem;
   max-width: 900px;
@@ -455,6 +472,15 @@ tbody tr.clickable:hover { background: #f0f4ff; }
 .modal-actions button:disabled { opacity: 0.5; cursor: default; }
 
 .form-error { color: #c0392b; font-size: 0.82rem; }
+.form-success { color: #27ae60; font-size: 0.82rem; }
+
+.case-edit-form input[type="text"] {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  flex: 1;
+}
 
 /* Activity timeline */
 .activity-timeline {

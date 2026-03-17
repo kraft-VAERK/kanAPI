@@ -9,8 +9,9 @@ export default function App() {
       <Routes>
         <Route path='/' element={<Login />} />
         <Route path='/register' element={<Register />} />
-        {/* Shared case detail */}
+        {/* Shared case detail + edit */}
         <Route path='/case/:caseId' element={<Dashboard />} />
+        <Route path='/case/:caseId/edit' element={<Dashboard />} />
         {/* Super admin: company drill-down */}
         <Route path='/company/:companyId' element={<Dashboard />} />
         <Route path='/company/:companyId/clients' element={<Dashboard />} />

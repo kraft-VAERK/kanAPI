@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { API, PAGE_SIZE } from "./constants";
 import { CasesTable } from "./CasesTable";
+import { CaseSearchBar } from "./CaseSearchBar";
 import { CustomersTable } from "./CustomersTable";
 import { Pagination } from "./Pagination";
 import { CreateCaseModal } from "./CreateCaseModal";
@@ -106,6 +107,10 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
   const [showCreateCase, setShowCreateCase] = useState(false);
   const [deleteState, setDeleteState] = useState(null); // null | 'confirm' | 'deleting'
   const [deleteError, setDeleteError] = useState(null);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchStatus, setSearchStatus] = useState("");
+  const [searchArchived, setSearchArchived] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const navigate = useNavigate();
 
   async function handleDeleteCompany() {
@@ -129,10 +134,31 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
     }
   }
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQ), 300);
+    return () => clearTimeout(t);
+  }, [searchQ]);
+
   function deriveClients(fetchedCases) {
     const map = {};
     for (const c of fetchedCases) map[c.customer] = (map[c.customer] || 0) + 1;
     setClients(Object.entries(map).map(([name, count]) => ({ name, count })));
+  }
+
+  function fetchCases(q, status, archived) {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (archived !== "") params.set("archived", archived);
+    const qs = params.toString();
+    fetch(`${API}/company/${companyId}/cases${qs ? `?${qs}` : ""}`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((fetchedCases) => {
+        setCases(fetchedCases);
+        deriveClients(fetchedCases);
+      });
   }
 
   useEffect(() => {
@@ -144,31 +170,23 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
         ),
       );
 
-    Promise.all([
-      fetch(`${API}/company/${companyId}/cases`, {
-        credentials: "include",
-      }).then((r) => (r.ok ? r.json() : [])),
-      fetch(`${API}/company/${companyId}/users`, {
-        credentials: "include",
-      }).then((r) => (r.ok ? r.json() : [])),
-    ]).then(([fetchedCases, fetchedUsers]) => {
-      setCases(fetchedCases);
-      setUsers(fetchedUsers);
-      deriveClients(fetchedCases);
-    });
+    fetch(`${API}/company/${companyId}/users`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setUsers);
   }, [companyId]);
 
   useEffect(() => {
+    fetchCases(debouncedQ, searchStatus, searchArchived);
+  }, [companyId, debouncedQ, searchStatus, searchArchived]);
+
+  useEffect(() => {
     setPage(1);
-  }, [activeTab, selectedCustomer]);
+  }, [activeTab, selectedCustomer, debouncedQ, searchStatus, searchArchived]);
 
   async function reloadCases() {
-    const res = await fetch(`${API}/company/${companyId}/cases`, {
-      credentials: "include",
-    });
-    const fetchedCases = res.ok ? await res.json() : [];
-    setCases(fetchedCases);
-    deriveClients(fetchedCases);
+    fetchCases(debouncedQ, searchStatus, searchArchived);
   }
 
   const filteredCases = selectedCustomer
@@ -240,20 +258,31 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
         </button>
       </div>
 
-      {activeTab === "cases" &&
-        (cases.length === 0 ? (
-          <p className="no-cases">No cases for this company.</p>
-        ) : (
-          <>
-            <CasesTable
-              cases={pageSlice}
-              onCaseClick={(c) =>
-                navigate(`/case/${c.id}`, { state: { case: c } })
-              }
-            />
-            <Pagination page={page} totalPages={totalPages} setPage={setPage} />
-          </>
-        ))}
+      {activeTab === "cases" && (
+        <>
+          <CaseSearchBar
+            q={searchQ}
+            onQChange={setSearchQ}
+            status={searchStatus}
+            onStatusChange={setSearchStatus}
+            archived={searchArchived}
+            onArchivedChange={setSearchArchived}
+          />
+          {cases.length === 0 ? (
+            <p className="no-cases">No cases for this company.</p>
+          ) : (
+            <>
+              <CasesTable
+                cases={pageSlice}
+                onCaseClick={(c) =>
+                  navigate(`/case/${c.id}`, { state: { case: c } })
+                }
+              />
+              <Pagination page={page} totalPages={totalPages} setPage={setPage} />
+            </>
+          )}
+        </>
+      )}
 
       {activeTab === "clients" &&
         !selectedCustomer &&

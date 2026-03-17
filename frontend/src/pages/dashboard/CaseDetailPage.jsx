@@ -4,9 +4,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { API } from "./constants";
 import { ActivityTimeline } from "./ActivityTimeline";
 import { CaseDetail } from "./CaseDetail";
+import { CaseEditForm } from "./CaseEditForm";
 import { DocumentsTable } from "./DocumentsTable";
 
-export function CaseDetailPage({ caseId }) {
+export function CaseDetailPage({ caseId, editMode }) {
   const location = useLocation();
   const [c, setC] = useState(location.state?.case || null);
   const [docs, setDocs] = useState([]);
@@ -14,21 +15,19 @@ export function CaseDetailPage({ caseId }) {
   const [loadingCase, setLoadingCase] = useState(!location.state?.case);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [loadingActivity, setLoadingActivity] = useState(true);
-  const [deleteState, setDeleteState] = useState(null); // null | 'confirm' | 'deleting'
+  const [deleteState, setDeleteState] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!location.state?.case) {
-      fetch(`${API}/case/${caseId}`, { credentials: "include" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          setC(data);
-          setLoadingCase(false);
-        });
-    }
+    fetch(`${API}/case/${caseId}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setC(data);
+        setLoadingCase(false);
+      });
     fetch(`${API}/case/${caseId}/documents`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
@@ -43,14 +42,10 @@ export function CaseDetailPage({ caseId }) {
       });
   }, [caseId]);
 
-  async function handleStatusChange(status) {
-    const res = await fetch(`${API}/case/${caseId}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    });
-    if (res.ok) setC(await res.json());
+  function reloadActivity() {
+    fetch(`${API}/case/${caseId}/activity`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setActivity);
   }
 
   async function deleteDocument(filename) {
@@ -99,7 +94,6 @@ export function CaseDetailPage({ caseId }) {
     const archiving_to = !c.archived;
     setArchiving(true);
     setArchiveError(null);
-    // Optimistically flip the button so it responds immediately
     setC((prev) => ({ ...prev, archived: archiving_to, ...(archiving_to && { status: "closed" }) }));
     try {
       const res = await fetch(`${API}/case/${caseId}`, {
@@ -111,13 +105,13 @@ export function CaseDetailPage({ caseId }) {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setArchiveError(data.detail || "Failed to update case.");
-        setC((prev) => ({ ...prev, archived: !archiving_to })); // revert
+        setC((prev) => ({ ...prev, archived: !archiving_to }));
         return;
       }
       setC(await res.json());
     } catch {
       setArchiveError("Network error.");
-      setC((prev) => ({ ...prev, archived: !archiving_to })); // revert
+      setC((prev) => ({ ...prev, archived: !archiving_to }));
     } finally {
       setArchiving(false);
     }
@@ -180,32 +174,65 @@ export function CaseDetailPage({ caseId }) {
         </p>
       )}
 
-      <section className="detail-section">
-        <h3 className="detail-section-title">Information</h3>
-        <CaseDetail c={c} onStatusChange={handleStatusChange} />
-      </section>
+      <div className="tabs">
+        <button
+          className={`tab${!editMode ? " active" : ""}`}
+          onClick={() => navigate(`/case/${caseId}`, { replace: true })}
+        >
+          Detail
+        </button>
+        <button
+          className={`tab${editMode ? " active" : ""}`}
+          onClick={() => navigate(`/case/${caseId}/edit`, { replace: true })}
+        >
+          Edit
+        </button>
+      </div>
 
-      <section className="detail-section">
-        <h3 className="detail-section-title">Documents</h3>
-        {loadingDocs ? (
-          <p className="no-cases">Loading…</p>
-        ) : docs.length === 0 ? (
-          <p className="no-cases">No documents attached.</p>
-        ) : (
-          <DocumentsTable docs={docs} onDownload={download} onDelete={deleteDocument} />
-        )}
-      </section>
+      {!editMode && (
+        <>
+          <section className="detail-section">
+            <h3 className="detail-section-title">Information</h3>
+            <CaseDetail c={c} />
+          </section>
 
-      <section className="detail-section">
-        <h3 className="detail-section-title">Activity</h3>
-        {loadingActivity ? (
-          <p className="no-cases">Loading…</p>
-        ) : activity.length === 0 ? (
-          <p className="no-cases">No activity recorded.</p>
-        ) : (
-          <ActivityTimeline entries={activity} />
-        )}
-      </section>
+          <section className="detail-section">
+            <h3 className="detail-section-title">Documents</h3>
+            {loadingDocs ? (
+              <p className="no-cases">Loading…</p>
+            ) : docs.length === 0 ? (
+              <p className="no-cases">No documents attached.</p>
+            ) : (
+              <DocumentsTable docs={docs} onDownload={download} onDelete={deleteDocument} />
+            )}
+          </section>
+
+          <section className="detail-section">
+            <h3 className="detail-section-title">Activity</h3>
+            {loadingActivity ? (
+              <p className="no-cases">Loading…</p>
+            ) : activity.length === 0 ? (
+              <p className="no-cases">No activity recorded.</p>
+            ) : (
+              <ActivityTimeline entries={activity} />
+            )}
+          </section>
+        </>
+      )}
+
+      {editMode && (
+        <section className="detail-section">
+          <h3 className="detail-section-title">Edit Case</h3>
+          <CaseEditForm
+            c={c}
+            caseId={caseId}
+            onSaved={(updated) => {
+              setC(updated);
+              reloadActivity();
+            }}
+          />
+        </section>
+      )}
     </main>
   );
 }

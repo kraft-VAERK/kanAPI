@@ -9,7 +9,7 @@ from pydantic import ConfigDict
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, or_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Query, Session
 
 from src.api.db.database import Base
 
@@ -268,6 +268,27 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
     ]
 
 
+def _apply_case_filters(
+    query: 'Query[CaseDB]',
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    archived: Optional[bool] = None,
+) -> 'Query[CaseDB]':
+    """Apply optional search/filter criteria to a CaseDB query."""
+    if q:
+        query = query.filter(
+            or_(
+                CaseDB.customer.ilike(f'%{q}%'),
+                CaseDB.responsible_person.ilike(f'%{q}%'),
+            ),
+        )
+    if status is not None:
+        query = query.filter(CaseDB.status == status)
+    if archived is not None:
+        query = query.filter(CaseDB.archived == archived)
+    return query
+
+
 def db_search_cases_by_user(
     db: Session,
     user_id: str,
@@ -289,17 +310,7 @@ def db_search_cases_by_user(
 
     """
     query = db.query(CaseDB).filter(CaseDB.user_id == user_id)
-    if q:
-        query = query.filter(
-            or_(
-                CaseDB.customer.ilike(f'%{q}%'),
-                CaseDB.responsible_person.ilike(f'%{q}%'),
-            ),
-        )
-    if status is not None:
-        query = query.filter(CaseDB.status == status)
-    if archived is not None:
-        query = query.filter(CaseDB.archived == archived)
+    query = _apply_case_filters(query, q=q, status=status, archived=archived)
     db_cases = query.all()
     return [
         Case(

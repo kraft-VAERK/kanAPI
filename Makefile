@@ -81,11 +81,11 @@ seed-fga:
 
 lint:
 	@echo "Running Ruff linter..."
-	@uv run ruff check ./src
+	@uv run ruff check ./src ./tests
 
 lint-fix:
 	@echo "Running Ruff linter with auto-fix..."
-	@uv run ruff check --fix ./src
+	@uv run ruff check --fix ./src ./tests
 
 frontend:
 	@echo "Building frontend..."

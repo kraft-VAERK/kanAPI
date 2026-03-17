@@ -1,14 +1,14 @@
 """Company endpoints — accessible by super admin only."""
 
 import http
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db as get_db_session
 from src.api.v1.auth.auth import get_current_user_from_cookie
-from src.api.v1.case.models import Case, CaseDB
+from src.api.v1.case.models import Case, CaseDB, _apply_case_filters
 from src.api.v1.company.models import (
     Company,
     CompanyCreate,
@@ -95,14 +95,22 @@ async def get_my_companies(current_user: CurrentUser, db: DbSession) -> list[Com
 
 
 @router.get('/my-cases', response_model=list[Case], status_code=http.HTTPStatus.OK)
-async def get_my_company_cases(current_user: CurrentUser, db: DbSession) -> list[Case]:
+async def get_my_company_cases(
+    current_user: CurrentUser,
+    db: DbSession,
+    q: Optional[str] = Query(default=None, description='Search customer or responsible person (case-insensitive)'),
+    status: Optional[str] = Query(default=None, description='Filter by exact status value'),
+    archived: Optional[bool] = Query(default=None, description='Filter by archived state'),
+) -> list[Case]:
     """Return all cases across sub-users of the current company admin."""
     _require_company_admin(current_user)
     sub_user_ids = [
         u.username for u in db.query(UserDB).filter(UserDB.parent_id == current_user.username).all()
     ]
     all_user_ids = [current_user.username, *sub_user_ids]
-    db_cases = db.query(CaseDB).filter(CaseDB.user_id.in_(all_user_ids)).all()
+    query = db.query(CaseDB).filter(CaseDB.user_id.in_(all_user_ids))
+    query = _apply_case_filters(query, q=q, status=status, archived=archived)
+    db_cases = query.all()
     return [
         Case(
             id=c.id,
@@ -136,12 +144,21 @@ async def get_company_users(company_id: str, current_user: CurrentUser, db: DbSe
 
 
 @router.get('/{company_id}/cases', response_model=list[Case], status_code=http.HTTPStatus.OK)
-async def get_company_cases(company_id: str, current_user: CurrentUser, db: DbSession) -> list[Case]:
+async def get_company_cases(
+    company_id: str,
+    current_user: CurrentUser,
+    db: DbSession,
+    q: Optional[str] = Query(default=None, description='Search customer or responsible person (case-insensitive)'),
+    status: Optional[str] = Query(default=None, description='Filter by exact status value'),
+    archived: Optional[bool] = Query(default=None, description='Filter by archived state'),
+) -> list[Case]:
     """Return all cases linked to this company or any of its direct client companies."""
     _require_super_admin(current_user)
     client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
     all_ids = [company_id, *client_ids]
-    db_cases = db.query(CaseDB).filter(CaseDB.company_id.in_(all_ids)).all()
+    query = db.query(CaseDB).filter(CaseDB.company_id.in_(all_ids))
+    query = _apply_case_filters(query, q=q, status=status, archived=archived)
+    db_cases = query.all()
     return [
         Case(
             id=c.id,

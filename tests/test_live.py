@@ -753,6 +753,128 @@ def test_regular_user_cannot_change_any_username() -> None:
         s_super.delete(f"{BASE}/user/{target_username}")
 
 
+# ─── Company case search/filter ───────────────────────────────────────────────
+
+
+def test_company_admin_my_cases_filter_by_status() -> None:
+    """GET /company/my-cases?status=open returns only open cases."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+    all_cases = s.get(f"{BASE}/company/my-cases").json()
+    if not all_cases:
+        pytest.skip("No company cases available")
+
+    filtered = s.get(f"{BASE}/company/my-cases", params={"status": "open"}).json()
+    assert isinstance(filtered, list)
+    assert all(c["status"] == "open" for c in filtered)
+    assert len(filtered) <= len(all_cases)
+
+
+def test_company_admin_my_cases_filter_by_q() -> None:
+    """GET /company/my-cases?q=<customer> returns only matching cases."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+
+    # Create a case with a unique customer name
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+    unique_customer = f"SearchTest_{uuid.uuid4().hex[:8]}"
+    case = _create_case(s, company_id, customer=unique_customer)
+
+    try:
+        filtered = s.get(f"{BASE}/company/my-cases", params={"q": unique_customer}).json()
+        assert len(filtered) >= 1
+        assert any(c["customer"] == unique_customer for c in filtered)
+
+        # Searching for nonsense returns no results (or fewer)
+        empty = s.get(f"{BASE}/company/my-cases", params={"q": "zzz_nonexistent_xyz"}).json()
+        assert unique_customer not in [c["customer"] for c in empty]
+    finally:
+        s.delete(f"{BASE}/case/{case['id']}")
+
+
+def test_company_admin_my_cases_filter_by_archived() -> None:
+    """GET /company/my-cases?archived=false excludes archived cases."""
+    s = _session()
+    _login(s, "admin@acme.dev", "acme123")
+
+    active_cases = s.get(f"{BASE}/company/my-cases", params={"archived": "false"}).json()
+    assert isinstance(active_cases, list)
+    assert all(c.get("archived") is not True for c in active_cases)
+
+
+def test_super_admin_company_cases_filter_by_status() -> None:
+    """GET /company/{id}/cases?status=open returns only open cases for super admin."""
+    s = _session()
+    _login(s, "superadmin@kanapi.dev", "super123")
+
+    companies = s.get(f"{BASE}/company/").json()
+    assert companies, "No companies found"
+    company_id = companies[0]["id"]
+
+    all_cases = s.get(f"{BASE}/company/{company_id}/cases").json()
+    if not all_cases:
+        pytest.skip("No cases for this company")
+
+    filtered = s.get(f"{BASE}/company/{company_id}/cases", params={"status": "open"}).json()
+    assert isinstance(filtered, list)
+    assert all(c["status"] == "open" for c in filtered)
+    assert len(filtered) <= len(all_cases)
+
+
+def test_super_admin_company_cases_filter_by_q() -> None:
+    """GET /company/{id}/cases?q=<term> returns only matching cases for super admin."""
+    s = _session()
+    _login(s, "superadmin@kanapi.dev", "super123")
+
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    all_cases = s.get(f"{BASE}/company/{company_id}/cases").json()
+    if not all_cases:
+        pytest.skip("No cases for this company")
+
+    # Search by a known customer name from the results
+    known_customer = all_cases[0]["customer"]
+    filtered = s.get(f"{BASE}/company/{company_id}/cases", params={"q": known_customer}).json()
+    assert len(filtered) >= 1
+    assert all(
+        known_customer.lower() in c["customer"].lower() or known_customer.lower() in c["responsible_person"].lower()
+        for c in filtered
+    )
+
+
+def test_super_admin_company_cases_combined_filters() -> None:
+    """GET /company/{id}/cases with q + status returns the intersection."""
+    s = _session()
+    _login(s, "superadmin@kanapi.dev", "super123")
+
+    companies = s.get(f"{BASE}/company/").json()
+    company_id = companies[0]["id"]
+
+    all_cases = s.get(f"{BASE}/company/{company_id}/cases").json()
+    if not all_cases:
+        pytest.skip("No cases for this company")
+
+    # Use a known customer + status combo
+    target = all_cases[0]
+    filtered = s.get(
+        f"{BASE}/company/{company_id}/cases",
+        params={"q": target["customer"], "status": target["status"]},
+    ).json()
+    assert len(filtered) >= 1
+    for c in filtered:
+        assert c["status"] == target["status"]
+
+
+def test_company_admin_search_forbidden_for_regular_user() -> None:
+    """Regular user gets 403 on GET /company/my-cases (requires company admin)."""
+    s = _session()
+    _login(s, "test@acme.dev", "test123")
+    r = s.get(f"{BASE}/company/my-cases")
+    assert r.status_code == 403
+
+
 # ─── Frontend ─────────────────────────────────────────────────────────────────
 
 

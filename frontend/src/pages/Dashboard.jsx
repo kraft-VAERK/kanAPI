@@ -11,6 +11,7 @@ import { UserProfileView } from "./dashboard/UserProfileView";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
+  const [toast, setToast] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { caseId, userId } = useParams();
@@ -26,6 +27,17 @@ export default function Dashboard() {
       })
       .catch(() => navigate("/", { replace: true }));
   }, [navigate]);
+
+  // Pick up toast from router state and clear it
+  useEffect(() => {
+    if (location.state?.toast) {
+      setToast(location.state.toast);
+      // Clear state so refreshing doesn't re-show
+      window.history.replaceState({}, "");
+      const t = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [location.state?.toast]);
 
   async function handleLogout() {
     await fetch(`${API}/auth/logout`, {
@@ -44,18 +56,21 @@ export default function Dashboard() {
   const header = (
     <header className="dashboard-header">
       <span>{user.username}</span>
-      <div style={{ display: "flex", gap: "0.5rem" }}>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        {toast && <span className="toast-success">{toast}</span>}
         <button onClick={() => navigate("/dashboard/profile")}>Profile</button>
         <button onClick={handleLogout}>Logout</button>
       </div>
     </header>
   );
 
+  const isEditMode = caseId && location.pathname.endsWith("/edit");
+
   if (caseId)
     return (
       <>
         {header}
-        <CaseDetailPage caseId={caseId} />
+        <CaseDetailPage caseId={caseId} editMode={isEditMode} />
       </>
     );
 
