@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API } from "./constants";
 
@@ -10,7 +10,40 @@ export function CaseEditForm({ c, caseId, onSaved }) {
   const [responsiblePerson, setResponsiblePerson] = useState(c.responsible_person);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestionsRef = useRef(null);
+  const inputRef = useRef(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`${API}/user/all`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setUsers);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target)
+      ) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = users.filter((u) => {
+    const search = responsiblePerson.toLowerCase();
+    return (
+      (u.full_name && u.full_name.toLowerCase().includes(search)) ||
+      u.username.toLowerCase().includes(search)
+    );
+  });
 
   const hasChanges =
     status !== c.status ||
@@ -49,6 +82,11 @@ export function CaseEditForm({ c, caseId, onSaved }) {
     }
   }
 
+  function selectUser(u) {
+    setResponsiblePerson(u.full_name || u.username);
+    setShowSuggestions(false);
+  }
+
   return (
     <form className="case-edit-form" onSubmit={handleSave}>
       <div className="case-detail-row">
@@ -74,15 +112,40 @@ export function CaseEditForm({ c, caseId, onSaved }) {
           onChange={(e) => setCustomer(e.target.value)}
         />
       </div>
-      <div className="case-detail-row">
+      <div className="case-detail-row" style={{ position: "relative" }}>
         <label className="case-detail-label" htmlFor="edit-responsible">Responsible</label>
-        <input
-          id="edit-responsible"
-          className="case-detail-value"
-          type="text"
-          value={responsiblePerson}
-          onChange={(e) => setResponsiblePerson(e.target.value)}
-        />
+        <div className="autocomplete-wrapper">
+          <input
+            ref={inputRef}
+            id="edit-responsible"
+            className="case-detail-value"
+            type="text"
+            value={responsiblePerson}
+            autoComplete="off"
+            onChange={(e) => {
+              setResponsiblePerson(e.target.value);
+              setShowSuggestions(true);
+              setError(null);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+          />
+          {showSuggestions && responsiblePerson && filtered.length > 0 && (
+            <ul className="autocomplete-list" ref={suggestionsRef}>
+              {filtered.slice(0, 8).map((u) => (
+                <li
+                  key={u.username}
+                  className="autocomplete-item"
+                  onMouseDown={() => selectUser(u)}
+                >
+                  <span className="autocomplete-name">{u.full_name || u.username}</span>
+                  {u.full_name && (
+                    <span className="autocomplete-username">{u.username}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       {error && (
         <p className="form-error" style={{ marginTop: "0.5rem" }}>{error}</p>

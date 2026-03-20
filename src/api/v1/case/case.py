@@ -159,14 +159,32 @@ async def update_case(
     current_user: Annotated[User, Depends(require_permission('editor'))],
 ) -> Case:
     """Apply a partial update to a case and log field changes."""
+    update_data = case_update.model_dump(exclude_unset=True)
     old = _get_case_db_or_404(db, case_id)
+    if 'responsible_person' in update_data:
+        name = update_data['responsible_person']
+        # Find users who belong to the same company as this case
+        company_user_ids = (
+            db.query(CaseDB.user_id)
+            .filter(CaseDB.company_id == old.company_id)
+            .distinct()
+            .subquery()
+        )
+        user_match = db.query(UserDB).filter(
+            UserDB.username.in_(company_user_ids),
+            (UserDB.full_name == name) | (UserDB.username == name),
+        ).first()
+        if not user_match:
+            raise HTTPException(
+                status_code=http.HTTPStatus.BAD_REQUEST,
+                detail=f'User "{name}" not found in this company.',
+            )
     # Capture values before db_update_case modifies the same ORM object in-place
     old_status = old.status
     old_responsible = old.responsible_person
     result = db_update_case(db=db, case_id=case_id, case_update=case_update)
     if not result:
         raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Case not found.')
-    update_data = case_update.model_dump(exclude_unset=True)
     if 'status' in update_data and update_data['status'] != old_status:
         db_log_activity(db, case_id, current_user.username, 'status_changed', f'{old_status} → {update_data["status"]}')
     if 'responsible_person' in update_data and update_data['responsible_person'] != old_responsible:

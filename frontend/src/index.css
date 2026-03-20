@@ -320,6 +320,36 @@ tbody tr.clickable:hover { background: #f0f4ff; }
 
 .arrow-btn:hover { color: #4a90d9; }
 
+/* Autocomplete */
+.autocomplete-wrapper { position: relative; flex: 1; }
+.autocomplete-wrapper input { width: 100%; box-sizing: border-box; }
+.autocomplete-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+.autocomplete-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.autocomplete-item:hover { background: #f0f4ff; }
+.autocomplete-name { font-size: 0.9rem; }
+.autocomplete-username { font-size: 0.75rem; color: #999; margin-left: 8px; }
+
 /* Search bar */
 .search-bar {
   display: flex;
