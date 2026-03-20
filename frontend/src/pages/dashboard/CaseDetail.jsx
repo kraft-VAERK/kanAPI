@@ -1,6 +1,5 @@
 export function CaseDetail({ c }) {
   const fields = [
-    ["ID", c.id],
     ["Customer", c.customer],
     ["Responsible", c.responsible_person],
     ["Status", c.status],

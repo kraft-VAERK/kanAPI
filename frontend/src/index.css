@@ -302,15 +302,23 @@ tbody tr.clickable:hover { background: #f0f4ff; }
   text-transform: none;
 }
 
-/* Clickable UUID */
-.id-link {
-  font-family: monospace;
-  font-size: 0.75rem;
-  color: #aaa;
-  text-decoration: none;
+/* Arrow button in cases table */
+.arrow-btn {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  line-height: 1;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 8px 0;
 }
 
-.id-link:hover { color: #4a90d9; text-decoration: underline; }
+.arrow-btn:hover { color: #4a90d9; }
 
 /* Search bar */
 .search-bar {
