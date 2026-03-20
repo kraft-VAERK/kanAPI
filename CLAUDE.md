@@ -134,6 +134,7 @@ Owner companies have `owner_id=NULL`. Client companies point to their parent wit
 | `updated_at` | DateTime(tz) | nullable |
 | `user_id` | String | FK → users.username — case creator |
 | `company_id` | UUID | FK → companies.id |
+| `archived` | Boolean | default False — soft-archive flag |
 
 > `customer` is a plain string on cases, not an FK. The `CustomerDB` table exists separately and is not linked to cases.
 
@@ -147,7 +148,7 @@ Owner companies have `owner_id=NULL`. Client companies point to their parent wit
 | `detail` | String | nullable — human-readable change summary (e.g. `open → closed`) |
 | `created_at` | DateTime(tz) | |
 
-Activity rows are written by `db_log_activity()`. Currently logged events: `case_created` (on create), `status_changed` and `responsible_changed` (on `PATCH`).
+Activity rows are written by `db_log_activity()`. Currently logged events: `case_created` (on create), `status_changed`, `responsible_changed`, `case_archived`, `case_unarchived` (on `PATCH`), `document_deleted` (on document delete).
 
 ### Customer (`customers` table)
 | Field | Type | Notes |
@@ -183,6 +184,7 @@ All endpoints under `/api/v1`.
 | GET | `/case/{case_id}/activity` | cookie | `viewer` | Activity log for a case (oldest first) |
 | GET | `/case/{case_id}/documents` | cookie | `viewer` | List MinIO documents for a case |
 | GET | `/case/{case_id}/documents/{filename}` | cookie | `viewer` | Download a document (StreamingResponse) |
+| DELETE | `/case/{case_id}/documents/{filename}` | cookie | `editor` | Delete a document + log activity |
 
 ### Company (`/company`)
 | Method | Path | Auth | Access | Description |
@@ -266,7 +268,7 @@ Helpers in `src/api/v1/case/storage.py`:
 - `stream_case_document(case_id, filename)` → `(HTTPResponse, content_type)`
 - `delete_case_documents(case_id)` — deletes all objects under `cases/{case_id}/` (called on case delete)
 
-Documents are uploaded only via seed (`make seed`) — no upload endpoint exists yet.
+Documents are uploaded only via seed (`make seed`) — no upload endpoint exists yet. Documents can be deleted via `DELETE /case/{case_id}/documents/{filename}`.
 
 ---
 
@@ -314,6 +316,7 @@ All navigation is URL-based — no pure React state routing. React Router v6.
 | `/company/:companyId/users` | `Dashboard` | Super admin: users for a company |
 | `/user/:userId` | `Dashboard` | User profile view |
 | `/case/:caseId` | `Dashboard` | Case detail page (any role) |
+| `/case/:caseId/edit` | `Dashboard` | Case edit form (any role) |
 | `*` | redirect → `/` | |
 
 Customer names in URLs are `encodeURIComponent`-encoded on navigate and `decodeURIComponent`-decoded on read.
@@ -340,7 +343,7 @@ Case navigation: `navigate(\`/case/${c.id}\`, { state: { case: c } })` — passe
 - `/dashboard/customers` → Customers tab (derived from case.customer in memory)
 - `/dashboard/customers/:customer` → filtered cases + "+ New Case" modal
 
-**All roles:** `/case/:caseId` → `CaseDetailPage` — case fields + documents list + Delete (with confirm step)
+**All roles:** `/case/:caseId` → `CaseDetailPage` — case fields + documents list + Delete (with confirm step) + Archive/Unarchive. `/case/:caseId/edit` → edit form (status, customer, responsible person)
 
 ### Frontend component structure
 
@@ -349,16 +352,17 @@ Case navigation: `navigate(\`/case/${c.id}\`, { state: { case: c } })` — passe
 - `SuperAdminDashboard` — companies list + company drill-down (cases, clients, users tabs)
 - `CompanyAdminDashboard` — cases, customers, users tabs for company admin
 - `UserDashboard` — cases + customers tabs for regular users; includes `CaseSearchBar`
-- `CaseDetailPage` — case fields + activity timeline + documents; uses `location.state?.case` first, fetches on direct URL load
+- `CaseDetailPage` — Detail/Edit tabs, activity timeline, documents, archive/unarchive, delete; uses `location.state?.case` first, fetches on direct URL load
 - `ProfileView` — current user's own profile
 - `UserProfileView` — admin view of another user's profile
 
 **Shared components** (all in `frontend/src/pages/dashboard/`):
-- `CasesTable` — ID (clickable → `/case/:id`), Customer (clickable → customer URL), Responsible, Status, Created
+- `CasesTable` — Customer (clickable → customer URL), Responsible, Status, Created, arrow button (→ `/case/:id`)
 - `CustomersTable` — Name, Case count (derived in memory)
-- `DocumentsTable` — File, Size, Modified, Download button
+- `DocumentsTable` — File, Size, Uploaded, Download button, Delete button (with confirm step)
 - `ActivityTimeline` — ordered list of `case_activities` entries
-- `CaseDetail` — read/edit fields for a single case (used inside `CaseDetailPage`)
+- `CaseDetail` — read-only fields for a single case (Customer, Responsible, Status, Created, Updated)
+- `CaseEditForm` — edit form for case fields (status, customer, responsible_person); navigates back with toast on save
 - `CaseSearchBar` — filter/search input for cases
 - `CreateCaseModal` — `POST /case/create`; props: `fixedCompanyId`, `fixedCustomer`, `users` (dropdown) or `currentUsername` (read-only)
 - `CreateCompanyModal` — `POST /company/`; optional owner dropdown
