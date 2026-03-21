@@ -74,7 +74,10 @@
       "Bash(PGPASSWORD=admin rtk proxy psql -h localhost -U admin -d postgres -c \"\\\\d case_activities\")",
       "Bash(rtk cat:*)",
       "Bash(git commit:*)",
-      "Bash(rtk make:*)"
+      "Bash(rtk make:*)",
+      "Bash(rtk lint:*)",
+      "Bash(echo $VIRTUAL_ENV)",
+      "Bash(unset VIRTUAL_ENV)"
     ]
   }
 }

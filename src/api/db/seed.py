@@ -341,8 +341,21 @@ async def _seed_fga_tuples(db: Session, admin_company_pairs: list[tuple[str, str
     for case in db.query(CaseDB).all():
         tuples.append(ClientTuple(user=f"user:{case.user_id}", relation="creator", object=f"case:{case.id}"))
         tuples.append(ClientTuple(user=f"company:{case.company_id}", relation="company", object=f"case:{case.id}"))
+        if case.responsible_user_id:
+            tuples.append(
+                ClientTuple(user=f"user:{case.responsible_user_id}", relation="assignee", object=f"case:{case.id}"),
+            )
     for admin_id, company_id in admin_company_pairs:
         tuples.append(ClientTuple(user=f"user:{admin_id}", relation="admin", object=f"company:{company_id}"))
+
+    # Write member tuples for all users based on their cases' companies
+    member_pairs = (
+        db.query(CaseDB.user_id, CaseDB.company_id)
+        .distinct()
+        .all()
+    )
+    for user_id, company_id in member_pairs:
+        tuples.append(ClientTuple(user=f"user:{user_id}", relation="member", object=f"company:{company_id}"))
 
     # FGA accepts up to 10 tuples per write request
     chunk_size = 10

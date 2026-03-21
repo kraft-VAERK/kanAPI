@@ -4,7 +4,7 @@ import { API } from "./constants";
 
 const STATUSES = ["open", "pending", "in_progress", "closed"];
 
-export function CaseEditForm({ c, caseId, onSaved }) {
+export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
   const [status, setStatus] = useState(c.status);
   const [customer, setCustomer] = useState(c.customer);
   const [responsiblePerson, setResponsiblePerson] = useState(c.responsible_person);
@@ -17,10 +17,11 @@ export function CaseEditForm({ c, caseId, onSaved }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch(`${API}/user/all`, { credentials: "include" })
+    if (!isAdmin) return;
+    fetch(`${API}/company/my-users`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setUsers);
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -37,13 +38,15 @@ export function CaseEditForm({ c, caseId, onSaved }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const filtered = users.filter((u) => {
-    const search = responsiblePerson.toLowerCase();
-    return (
-      (u.full_name && u.full_name.toLowerCase().includes(search)) ||
-      u.username.toLowerCase().includes(search)
-    );
-  });
+  const filtered = responsiblePerson
+    ? users.filter((u) => {
+        const search = responsiblePerson.toLowerCase();
+        return (
+          (u.full_name && u.full_name.toLowerCase().includes(search)) ||
+          u.username.toLowerCase().includes(search)
+        );
+      })
+    : users;
 
   const hasChanges =
     status !== c.status ||
@@ -122,6 +125,7 @@ export function CaseEditForm({ c, caseId, onSaved }) {
             type="text"
             value={responsiblePerson}
             autoComplete="off"
+            disabled={!isAdmin}
             onChange={(e) => {
               setResponsiblePerson(e.target.value);
               setShowSuggestions(true);
@@ -129,9 +133,9 @@ export function CaseEditForm({ c, caseId, onSaved }) {
             }}
             onFocus={() => setShowSuggestions(true)}
           />
-          {showSuggestions && responsiblePerson && filtered.length > 0 && (
+          {showSuggestions && filtered.length > 0 && (
             <ul className="autocomplete-list" ref={suggestionsRef}>
-              {filtered.slice(0, 8).map((u) => (
+              {filtered.slice(0, 10).map((u) => (
                 <li
                   key={u.username}
                   className="autocomplete-item"

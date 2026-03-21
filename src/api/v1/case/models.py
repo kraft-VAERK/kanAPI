@@ -296,20 +296,25 @@ def db_search_cases_by_user(
     status: Optional[str] = None,
     archived: Optional[bool] = None,
 ) -> List[Case]:
-    """Search cases for a user with optional filters applied in the database.
+    """Search cases visible to a user with optional filters applied in the database.
 
-    Args:
-        db: Database session
-        user_id: ID of the user (case creator)
-        q: Free-text search on customer and responsible_person (ILIKE)
-        status: Exact match on status column
-        archived: Exact match on archived column
-
-    Returns:
-        Filtered list of cases
+    For users with a parent (sub-users), returns all cases in the same companies
+    as their sibling users. For other users, returns only their own cases.
+    FGA viewer permission is applied after this query.
 
     """
-    query = db.query(CaseDB).filter(CaseDB.user_id == user_id)
+    from src.api.v1.user.models import UserDB
+
+    user = db.query(UserDB).filter(UserDB.username == user_id).first()
+    if user and user.parent_id:
+        # Sub-user: get all cases from companies their team works in
+        sibling_ids = db.query(UserDB.username).filter(UserDB.parent_id == user.parent_id).subquery()
+        company_ids = (
+            db.query(CaseDB.company_id).filter(CaseDB.user_id.in_(sibling_ids)).distinct().subquery()
+        )
+        query = db.query(CaseDB).filter(CaseDB.company_id.in_(company_ids))
+    else:
+        query = db.query(CaseDB).filter(CaseDB.user_id == user_id)
     query = _apply_case_filters(query, q=q, status=status, archived=archived)
     db_cases = query.all()
     return [

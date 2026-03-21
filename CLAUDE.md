@@ -11,6 +11,7 @@ make run-prod     # Run the app (production, 4 workers)
 make db           # Start all Docker services: PostgreSQL, MinIO, OpenFGA (detached)
 make seed         # Wipe and re-seed PostgreSQL with test users/cases/documents
 make seed-fga     # Create OpenFGA store + write authorization model (writes to .env automatically)
+make fga-prod     # Production FGA bootstrap — idempotent, safe to run on every deploy
 make lint         # Run Ruff linter
 make lint-fix     # Run Ruff linter with auto-fix
 make test         # Run pytest (unit + integration, excludes live tests)
@@ -225,7 +226,36 @@ All endpoints under `/api/v1`.
 
 ## Authorization — OpenFGA
 
-OpenFGA runs in Docker (port 8080, playground at 3000). Required env vars: `FGA_API_URL`, `FGA_STORE_ID`, `FGA_MODEL_ID` — written to `.env` by `make seed-fga`.
+OpenFGA runs in Docker (port 8080, playground at 3000). Required env vars: `FGA_API_URL`, `FGA_STORE_ID`, `FGA_MODEL_ID` — written to `.env` by `make seed-fga` (dev) or `make fga-prod` (production).
+
+**Two bootstrap modes:**
+
+| | `make seed-fga` (dev) | `make fga-prod` (production) |
+|---|---|---|
+| Store | Creates a **new** store every run | Reuses existing store if `FGA_STORE_ID` is set; creates only if missing |
+| Model | Always writes fresh | Compares against current model; writes **new version** only if changed |
+| Tuples | None (tuples written by `make seed`) | **Never touched** — existing tuples survive model upgrades |
+| Safe to re-run | No (orphans old stores) | Yes (fully idempotent) |
+
+**Production workflow:**
+
+```bash
+# First deploy — creates store + writes model, persists IDs to .env
+make fga-prod
+
+# After model changes in CASE_AUTH_MODEL (seed_fga.py) — writes new model version
+# Old model version is preserved; existing tuples remain intact
+make fga-prod
+
+# Rollback — set FGA_MODEL_ID to previous value in .env and restart the app
+# OpenFGA evaluates checks against whichever model ID the client is configured with
+```
+
+**Updating the model in production:**
+1. Edit `CASE_AUTH_MODEL` in `src/api/db/seed_fga.py` (single source of truth)
+2. Run `make fga-prod` — detects the change and writes a new model version
+3. Restart the app to pick up the new `FGA_MODEL_ID` from `.env`
+4. If the change adds new relations that need tuples, write a one-off migration script
 
 **Types:**
 - `user` — a human user

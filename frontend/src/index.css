@@ -152,7 +152,7 @@ table {
   font-size: 0.9rem;
 }
 
-th, td { padding: 0.65rem 1rem; text-align: left; }
+th, td { padding: 0.45rem 0.75rem; text-align: left; }
 
 thead { background: #f9f9f9; }
 

@@ -70,7 +70,7 @@ export default function Dashboard() {
     return (
       <>
         {header}
-        <CaseDetailPage caseId={caseId} editMode={isEditMode} />
+        <CaseDetailPage caseId={caseId} editMode={isEditMode} user={user} />
       </>
     );
 

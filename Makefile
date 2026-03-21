@@ -1,4 +1,4 @@
-PHONY: run run-prod dev lint lint-fix frontend test seed seed-fga db clean docker-run docker-build docker-push docker-login docker-logout docker-all
+PHONY: run run-prod dev lint lint-fix frontend test seed seed-fga fga-prod db clean docker-run docker-build docker-push docker-login docker-logout docker-all
 
 
 run:
@@ -78,6 +78,10 @@ seed:
 seed-fga:
 	@echo "Creating OpenFGA store and writing authorization model..."
 	@uv run python3 -m src.api.db.seed_fga
+
+fga-prod:
+	@echo "Production FGA bootstrap (idempotent)..."
+	@uv run python3 -m src.api.db.prod_fga
 
 lint:
 	@echo "Running Ruff linter..."

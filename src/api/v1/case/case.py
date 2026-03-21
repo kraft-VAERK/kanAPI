@@ -116,6 +116,10 @@ async def create_case(
     result = db_create_case(db=db, case=case, user_id=current_user.username, case_id=case_id)
     await write_tuple(current_user.username, 'creator', 'case', case_id)
     await write_tuple(case.company_id, 'company', 'case', case_id, subject_type='company')
+    if case.responsible_user_id:
+        await write_tuple(case.responsible_user_id, 'assignee', 'case', case_id)
+    # Ensure the creator is a member of the company (for viewer access to all company cases)
+    await write_tuple_safe(current_user.username, 'member', 'company', case.company_id)
     # If the creator has a parent admin, establish their FGA admin relation to the company
     # so they can delete cases created by their sub-users.
     if current_user.parent_id:
@@ -136,14 +140,17 @@ async def delete_case(
     db: DbSession,
     _auth: Annotated[User, Depends(require_permission('deleter'))],
 ) -> None:
-    """Delete a case and clean up its OpenFGA creator tuple."""
+    """Delete a case and clean up its OpenFGA tuples."""
     row = _get_case_db_or_404(db, case_id)
     creator_id = row.user_id
     company_id = row.company_id
+    assignee_id = row.responsible_user_id
     db_delete_case(db=db, case_id=case_id)
     delete_case_documents(case_id)
     await delete_tuple(creator_id, 'creator', 'case', case_id)
     await delete_tuple(company_id, 'company', 'case', case_id, subject_type='company')
+    if assignee_id:
+        await delete_tuple(assignee_id, 'assignee', 'case', case_id)
 
 
 @router.patch(
@@ -161,7 +168,14 @@ async def update_case(
     """Apply a partial update to a case and log field changes."""
     update_data = case_update.model_dump(exclude_unset=True)
     old = _get_case_db_or_404(db, case_id)
+
+    # Only admins can change the responsible person
     if 'responsible_person' in update_data:
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=http.HTTPStatus.FORBIDDEN,
+                detail='Only admins can change the responsible person.',
+            )
         name = update_data['responsible_person']
         # Find users who belong to the same company as this case
         company_user_ids = (
@@ -179,9 +193,11 @@ async def update_case(
                 status_code=http.HTTPStatus.BAD_REQUEST,
                 detail=f'User "{name}" not found in this company.',
             )
+
     # Capture values before db_update_case modifies the same ORM object in-place
     old_status = old.status
     old_responsible = old.responsible_person
+    old_responsible_user_id = old.responsible_user_id
     result = db_update_case(db=db, case_id=case_id, case_update=case_update)
     if not result:
         raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Case not found.')
@@ -190,6 +206,12 @@ async def update_case(
     if 'responsible_person' in update_data and update_data['responsible_person'] != old_responsible:
         detail = f'{old_responsible} → {update_data["responsible_person"]}'
         db_log_activity(db, case_id, current_user.username, 'responsible_changed', detail)
+        # Update the FGA assignee tuple so the new responsible person gets editor access
+        new_responsible_user_id = db.query(CaseDB.responsible_user_id).filter(CaseDB.id == case_id).scalar()
+        if old_responsible_user_id:
+            await delete_tuple(old_responsible_user_id, 'assignee', 'case', case_id)
+        if new_responsible_user_id:
+            await write_tuple(new_responsible_user_id, 'assignee', 'case', case_id)
     if 'archived' in update_data:
         action = 'case_archived' if update_data['archived'] else 'case_unarchived'
         db_log_activity(db, case_id, current_user.username, action)

@@ -55,6 +55,12 @@ CASE_AUTH_MODEL = {
                                     'computedUserset': {'relation': 'admin'},
                                 },
                             },
+                            {
+                                'tupleToUserset': {
+                                    'tupleset': {'relation': 'company'},
+                                    'computedUserset': {'relation': 'member'},
+                                },
+                            },
                         ],
                     },
                 },
@@ -62,7 +68,7 @@ CASE_AUTH_MODEL = {
                     'union': {
                         'child': [
                             {'this': {}},
-                            {'computedUserset': {'relation': 'creator'}},
+                            {'computedUserset': {'relation': 'assignee'}},
                             {
                                 'tupleToUserset': {
                                     'tupleset': {'relation': 'company'},

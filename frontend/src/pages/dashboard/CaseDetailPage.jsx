@@ -7,7 +7,7 @@ import { CaseDetail } from "./CaseDetail";
 import { CaseEditForm } from "./CaseEditForm";
 import { DocumentsTable } from "./DocumentsTable";
 
-export function CaseDetailPage({ caseId, editMode }) {
+export function CaseDetailPage({ caseId, editMode, user }) {
   const location = useLocation();
   const [c, setC] = useState(location.state?.case || null);
   const [docs, setDocs] = useState([]);
@@ -130,6 +130,12 @@ export function CaseDetailPage({ caseId, editMode }) {
       </main>
     );
 
+  const canEdit =
+    user?.is_admin ||
+    c.responsible_user_id === user?.username ||
+    c.responsible_person === user?.full_name ||
+    c.responsible_person === user?.username;
+
   return (
     <main className="dashboard-main">
       <div className="section-heading">
@@ -137,31 +143,35 @@ export function CaseDetailPage({ caseId, editMode }) {
           ← Back
         </button>
         <h2>Case</h2>
-        {deleteState === "confirm" ? (
-          <div className="delete-confirm">
-            <span>Delete this case?</span>
-            <button className="back-btn" onClick={() => setDeleteState(null)}>
-              Cancel
+        {canEdit && (
+          <>
+            {deleteState === "confirm" ? (
+              <div className="delete-confirm">
+                <span>Delete this case?</span>
+                <button className="back-btn" onClick={() => setDeleteState(null)}>
+                  Cancel
+                </button>
+                <button className="delete-btn" onClick={handleDelete}>
+                  Confirm
+                </button>
+              </div>
+            ) : (
+              <button
+                className="delete-btn"
+                onClick={() => setDeleteState("confirm")}
+              >
+                Delete
+              </button>
+            )}
+            <button
+              className="archive-btn"
+              onClick={handleArchive}
+              disabled={archiving}
+            >
+              {c.archived ? "Unarchive" : "Archive"}
             </button>
-            <button className="delete-btn" onClick={handleDelete}>
-              Confirm
-            </button>
-          </div>
-        ) : (
-          <button
-            className="delete-btn"
-            onClick={() => setDeleteState("confirm")}
-          >
-            Delete
-          </button>
+          </>
         )}
-        <button
-          className="archive-btn"
-          onClick={handleArchive}
-          disabled={archiving}
-        >
-          {c.archived ? "Unarchive" : "Archive"}
-        </button>
       </div>
       {archiveError && (
         <p className="form-error" style={{ marginBottom: "1rem" }}>
@@ -181,12 +191,14 @@ export function CaseDetailPage({ caseId, editMode }) {
         >
           Detail
         </button>
-        <button
-          className={`tab${editMode ? " active" : ""}`}
-          onClick={() => navigate(`/case/${caseId}/edit`, { replace: true })}
-        >
-          Edit
-        </button>
+        {canEdit && (
+          <button
+            className={`tab${editMode ? " active" : ""}`}
+            onClick={() => navigate(`/case/${caseId}/edit`, { replace: true })}
+          >
+            Edit
+          </button>
+        )}
       </div>
 
       {!editMode && (
@@ -220,12 +232,13 @@ export function CaseDetailPage({ caseId, editMode }) {
         </>
       )}
 
-      {editMode && (
+      {editMode && canEdit && (
         <section className="detail-section">
           <h3 className="detail-section-title">Edit Case</h3>
           <CaseEditForm
             c={c}
             caseId={caseId}
+            isAdmin={!!user?.is_admin}
             onSaved={(updated) => {
               setC(updated);
               reloadActivity();
