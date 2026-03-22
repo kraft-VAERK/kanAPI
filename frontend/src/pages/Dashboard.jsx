@@ -34,7 +34,7 @@ export default function Dashboard() {
       setToast(location.state.toast);
       // Clear state so refreshing doesn't re-show
       window.history.replaceState({}, "");
-      const t = setTimeout(() => setToast(null), 5000);
+      const t = setTimeout(() => setToast(null), 3000);
       return () => clearTimeout(t);
     }
   }, [location.state?.toast]);
