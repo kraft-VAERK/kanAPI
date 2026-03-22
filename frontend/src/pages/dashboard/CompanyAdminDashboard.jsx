@@ -28,6 +28,7 @@ export function CompanyAdminDashboard({ user }) {
   const [searchStatus, setSearchStatus] = useState("");
   const [searchArchived, setSearchArchived] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const [myResponsible, setMyResponsible] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchQ), 300);
@@ -57,7 +58,7 @@ export function CompanyAdminDashboard({ user }) {
 
   useEffect(() => {
     setPage(1);
-  }, [tab, customer, debouncedQ, searchStatus, searchArchived]);
+  }, [tab, customer, debouncedQ, searchStatus, searchArchived, myResponsible]);
 
   const customerMap = {};
   for (const c of cases)
@@ -67,9 +68,12 @@ export function CompanyAdminDashboard({ user }) {
     count,
   }));
 
-  const activeCases = customer
-    ? cases.filter((c) => c.customer === customer)
+  const filteredCases = myResponsible
+    ? cases.filter((c) => c.responsible_user_id === user?.username)
     : cases;
+  const activeCases = customer
+    ? filteredCases.filter((c) => c.customer === customer)
+    : filteredCases;
   const visibleItems =
     tab === "customers" && !customer
       ? customers
@@ -107,7 +111,15 @@ export function CompanyAdminDashboard({ user }) {
 
       {tab === "cases" && (
         <>
-          <h2>All Cases</h2>
+          <div className="section-heading">
+            <h2>Cases</h2>
+            <button
+              className={`toggle-btn${myResponsible ? " active" : ""}`}
+              onClick={() => { setMyResponsible((v) => !v); setPage(1); }}
+            >
+              Responsible
+            </button>
+          </div>
           <CaseSearchBar
             q={searchQ}
             onQChange={setSearchQ}

@@ -386,19 +386,135 @@ Case navigation: `navigate(\`/case/${c.id}\`, { state: { case: c } })` — passe
 - `ProfileView` — current user's own profile
 - `UserProfileView` — admin view of another user's profile
 
-**Shared components** (all in `frontend/src/pages/dashboard/`):
-- `CasesTable` — Customer (clickable → customer URL), Responsible, Status, Created, arrow button (→ `/case/:id`)
-- `CustomersTable` — Name, Case count (derived in memory)
-- `DocumentsTable` — File, Size, Uploaded, Download button, Delete button (with confirm step)
-- `ActivityTimeline` — ordered list of `case_activities` entries
-- `CaseDetail` — read-only fields for a single case (Customer, Responsible, Status, Created, Updated)
-- `CaseEditForm` — edit form for case fields (status, customer, responsible_person); navigates back with toast on save
-- `CaseSearchBar` — filter/search input for cases
-- `CreateCaseModal` — `POST /case/create`; props: `fixedCompanyId`, `fixedCustomer`, `users` (dropdown) or `currentUsername` (read-only)
-- `CreateCompanyModal` — `POST /company/`; optional owner dropdown
-- `Pagination` — hides when ≤1 page, 10 items/page (`PAGE_SIZE = 10`)
-- `constants.js` — `API` base URL, `PAGE_SIZE`
-- `utils.js` — shared utility functions
+### Reusable components
+
+All in `frontend/src/pages/dashboard/`. Use these when building new views — don't recreate them.
+
+#### Data tables
+
+| Component | Props | Renders |
+|-----------|-------|---------|
+| `CasesTable` | `cases`, `onCaseClick(case)`, `onCustomerClick(name)` | Customer (clickable link if `onCustomerClick`), Responsible, Status, Created, arrow → `/case/:id` |
+| `CustomersTable` | `customers: [{name, count}]`, `onSelect(name)` | Clickable rows with name + case count |
+| `DocumentsTable` | `docs: [{name, size, last_modified}]`, `onDownload(filename)`, `onDelete(filename)` | File, Size (via `formatBytes`), Uploaded, Download + Delete (2-step confirm) |
+
+#### Search & filter
+
+| Component | Props | Renders |
+|-----------|-------|---------|
+| `CaseSearchBar` | `q`, `onQChange`, `status`, `onStatusChange`, `archived`, `onArchivedChange` | Text input + status dropdown (open/pending/in_progress/closed) + archived dropdown (all/active/archived) |
+
+Standard wiring pattern in dashboards:
+```jsx
+const [searchQ, setSearchQ] = useState('');
+const [searchStatus, setSearchStatus] = useState('');
+const [searchArchived, setSearchArchived] = useState('');
+const [debouncedQ, setDebouncedQ] = useState('');
+
+useEffect(() => {
+  const t = setTimeout(() => setDebouncedQ(searchQ), 300);
+  return () => clearTimeout(t);
+}, [searchQ]);
+```
+
+#### Detail & form
+
+| Component | Props | Renders |
+|-----------|-------|---------|
+| `CaseDetail` | `c` (case object) | Read-only card: Customer, Responsible, Status, Created, Updated |
+| `CaseEditForm` | `c`, `caseId`, `isAdmin`, `onSaved(updatedCase)` | Edit form: status dropdown, customer autocomplete (company-scoped), responsible person autocomplete (admin only). Navigates back with toast on save. |
+| `ActivityTimeline` | `entries: [{id, action, detail, user_id, created_at}]` | Timeline with dots; shows 5 most recent, expandable to all. Humanizes action names. |
+
+#### Navigation & layout
+
+| Component | Props | Renders |
+|-----------|-------|---------|
+| `Pagination` | `page`, `totalPages`, `setPage` | Prev/Next buttons + page indicator. Hidden when ≤1 page. |
+
+Standard pagination pattern:
+```jsx
+const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+const pageSlice = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+// Reset page on filter change:
+useEffect(() => { setPage(1); }, [filter1, filter2]);
+```
+
+#### Modals
+
+| Component | Props | Renders |
+|-----------|-------|---------|
+| `CreateCaseModal` | `onClose`, `onCreated`, `fixedCompanyId`, `fixedCustomer`, `users` (admin dropdown) or `currentUsername`+`currentUserId` (read-only) | Case creation form → `POST /case/create` |
+| `CreateCompanyModal` | `companies` (for owner dropdown), `onClose`, `onCreated` | Company creation form → `POST /company/` |
+
+Modal wiring pattern:
+```jsx
+const [showCreate, setShowCreate] = useState(false);
+// ...
+<button className="create-btn" onClick={() => setShowCreate(true)}>+ New</button>
+{showCreate && (
+  <CreateCaseModal
+    onClose={() => setShowCreate(false)}
+    onCreated={() => { setShowCreate(false); reload(); }}
+    {...otherProps}
+  />
+)}
+```
+
+#### Constants & utilities (`constants.js`, `utils.js`)
+
+| Export | Value / Signature | Usage |
+|--------|-------------------|-------|
+| `API` | `'/api/v1'` | Base URL for all `fetch()` calls |
+| `PAGE_SIZE` | `10` | Items per page for all paginated views |
+| `formatBytes(n)` | `(number) → string` | `1024 → '1.0 KB'` — used by `DocumentsTable` |
+
+### CSS button system
+
+All buttons share a single base defined in `index.css`. To style a new button, compose from these classes:
+
+| Class | Style | Use for |
+|-------|-------|---------|
+| `.btn` | Outline: border + secondary text | Generic actions |
+| `.btn-filled` | Solid `--btn-bg` background, white text | Primary actions (add to `.btn`) |
+| `.btn-danger` | Red border + red text, red hover bg | Destructive actions (add to `.btn`) |
+
+Built-in classes that already include the base (no need to add `.btn`):
+
+| Class | Style | Notes |
+|-------|-------|-------|
+| `.create-btn` | Filled + `margin-left: auto` | "+" buttons in section headings |
+| `.toggle-btn` | Outline; `.toggle-btn.active` → filled | Filter toggles (e.g. "Responsible") |
+| `.back-btn` | Outline | "← Back" navigation |
+| `.archive-btn` | Outline with `--text` border | Archive/Unarchive |
+| `.delete-btn` | Danger + `margin-left: auto` | Delete buttons |
+| `.view-all-activity-btn` | Outline + `display: block` | "View all" expand toggle |
+| `.link-btn` | Unstyled, underlined link color | Inline text links in tables |
+
+Example — new button:
+```html
+<!-- outline -->
+<button className="btn">Cancel</button>
+<!-- filled primary -->
+<button className="btn btn-filled">Save</button>
+<!-- danger -->
+<button className="btn btn-danger">Remove</button>
+```
+
+### CSS theme variables
+
+Light/dark theme via `data-theme` attribute on root. All colors use CSS variables — never hardcode colors.
+
+Key variables: `--bg`, `--bg-card`, `--bg-hover`, `--bg-input`, `--text`, `--text-secondary`, `--text-muted`, `--text-faint`, `--border`, `--border-light`, `--btn-bg`, `--btn-bg-hover`, `--btn-text`, `--link`, `--link-hover`, `--error`, `--success`, `--delete-border`, `--delete-hover-bg`, `--shadow`, `--overlay`.
+
+### Common frontend patterns
+
+**Debounced search** — All search inputs use a 300ms debounce before hitting the API. The `debouncedQ` state drives `useEffect` fetches, not `searchQ` directly.
+
+**Customer derivation** — Customer lists are derived in-memory from case data (`customerMap` pattern), not from a separate API. Build a `{ name → count }` map from `cases.customer`.
+
+**Router state preloading** — When navigating to a detail page, pass the object via `navigate(url, { state: { case: obj } })`. The detail page reads `location.state?.case` first and only fetches from the API as fallback.
+
+**"Responsible" toggle** — `UserDashboard` and `CompanyAdminDashboard` have a `myResponsible` boolean state that client-side filters cases by `c.responsible_user_id === user.username`.
 
 ---
 

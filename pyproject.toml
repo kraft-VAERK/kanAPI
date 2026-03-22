@@ -19,6 +19,7 @@ dependencies = [
     "openfga-sdk",
     "bcrypt",
     "slowapi",
+    "email-validator>=2.3.0",
 ]
 
 [dependency-groups]
@@ -32,6 +33,7 @@ dev = [
 lint.select = ["E", "F", "I", "W", "C90", "N", "UP", "B", "ANN", "D", "COM", "PT", "RUF", "SIM", "TCH", "ARG"]
 lint.ignore = ["W293"]
 lint.fixable = ["A", "B", "C", "E", "F", "I", "N", "UP", "W", "COM", "PT", "SIM", "TCH"]
+lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 exclude = [
     ".bzr",
     ".claude",
@@ -58,7 +60,6 @@ exclude = [
     "venv",
 ]
 line-length = 120
-lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 target-version = "py37"
 
 [tool.ruff.lint.mccabe]

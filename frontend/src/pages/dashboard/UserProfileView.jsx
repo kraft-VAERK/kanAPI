@@ -104,6 +104,7 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
         is_active: updated.is_active,
       });
       setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch {
       setSaveError("Network error.");
     } finally {

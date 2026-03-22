@@ -1,12 +1,13 @@
 """Company model for API v1."""
 
 import http
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
-from pydantic import ConfigDict
+from pydantic import ConfigDict, EmailStr, Field
 from sqlalchemy import Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
 
 from src.api.db.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class CompanyDB(Base):
@@ -47,10 +50,10 @@ class Company(pydantic.BaseModel):
 class CompanyCreate(pydantic.BaseModel):
     """Pydantic model for creating a Company."""
 
-    name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    address: Optional[str] = None
+    name: str = Field(max_length=255)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(default=None, max_length=50)
+    address: Optional[str] = Field(default=None, max_length=500)
     owner_id: Optional[str] = None
 
 
@@ -72,7 +75,8 @@ def db_create_company(db: Session, company_create: CompanyCreate) -> Company:
         return Company.model_validate(db_company)
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 def db_get_companies(db: Session) -> list[Company]:
@@ -113,4 +117,5 @@ def db_delete_company(db: Session, company_id: str) -> bool:
         raise
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e

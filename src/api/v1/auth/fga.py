@@ -16,6 +16,7 @@ from openfga_sdk.client.models import (
     ClientTuple,
     ClientWriteRequest,
 )
+from openfga_sdk.exceptions import FgaValidationException, ValidationException
 
 from src.api.v1.auth.auth import get_current_user_from_cookie
 from src.api.v1.user.models import User  # noqa #TC001
@@ -32,10 +33,14 @@ async def get_fga_client() -> OpenFgaClient:
     """Return a reusable OpenFGA client (singleton)."""
     global _fga_client
     if _fga_client is None:
+        store_id = os.environ.get("FGA_STORE_ID")
+        model_id = os.environ.get("FGA_MODEL_ID")
+        if not store_id or not model_id:
+            logger.warning("FGA_STORE_ID or FGA_MODEL_ID not set — authorization checks may fail")
         config = ClientConfiguration(
             api_url=os.environ.get("FGA_API_URL", "http://localhost:8080"),
-            store_id=os.environ.get("FGA_STORE_ID"),
-            authorization_model_id=os.environ.get("FGA_MODEL_ID"),
+            store_id=store_id,
+            authorization_model_id=model_id,
         )
         _fga_client = OpenFgaClient(config)
     return _fga_client
@@ -116,6 +121,9 @@ async def write_tuple_safe(
     """Write a relationship tuple, silently ignoring duplicate errors only."""
     try:
         await write_tuple(subject_id, relation, object_type, object_id, subject_type=subject_type)
+    except (FgaValidationException, ValidationException):
+        # Duplicate tuple — safe to ignore
+        return
     except Exception as e:
         err_msg = str(e).lower()
         if 'already exists' in err_msg or 'duplicate' in err_msg or 'cannot write' in err_msg:

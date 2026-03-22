@@ -3,6 +3,7 @@
 from typing import Optional
 
 import pydantic
+from pydantic import EmailStr, Field
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session
@@ -44,10 +45,10 @@ class Customer(pydantic.BaseModel):  # noqa: D101
 class CustomerCreate(pydantic.BaseModel):  # noqa: D101, RUF100
     """Model for creating a new customer."""
 
-    name: str
-    email: str
-    phone: Optional[str] = None
-    address: Optional[str] = None
+    name: str = Field(max_length=255)
+    email: EmailStr
+    phone: Optional[str] = Field(default=None, max_length=50)
+    address: Optional[str] = Field(default=None, max_length=500)
 
 
 def db_create_customer(db: Session, customer: CustomerCreate) -> Customer:

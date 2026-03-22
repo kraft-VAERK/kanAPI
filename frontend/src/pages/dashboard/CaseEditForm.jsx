@@ -11,9 +11,13 @@ export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [users, setUsers] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
   const suggestionsRef = useRef(null);
+  const customerSuggestionsRef = useRef(null);
   const inputRef = useRef(null);
+  const customerInputRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,6 +26,20 @@ export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
       .then((r) => (r.ok ? r.json() : []))
       .then(setUsers);
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!c.company_id) return;
+    const endpoint = isAdmin ? `${API}/company/my-cases` : `${API}/case/`;
+    fetch(endpoint, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((cases) => {
+        const names = new Set();
+        for (const cs of cases) {
+          if (cs.company_id === c.company_id) names.add(cs.customer);
+        }
+        setCustomers([...names].sort());
+      });
+  }, [c.company_id, isAdmin]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -33,10 +51,22 @@ export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
       ) {
         setShowSuggestions(false);
       }
+      if (
+        customerSuggestionsRef.current &&
+        !customerSuggestionsRef.current.contains(e.target) &&
+        customerInputRef.current &&
+        !customerInputRef.current.contains(e.target)
+      ) {
+        setShowCustomerSuggestions(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const filteredCustomers = customer
+    ? customers.filter((name) => name.toLowerCase().includes(customer.toLowerCase()))
+    : customers;
 
   const filtered = responsiblePerson
     ? users.filter((u) => {
@@ -105,15 +135,40 @@ export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
           ))}
         </select>
       </div>
-      <div className="case-detail-row">
+      <div className="case-detail-row" style={{ position: "relative" }}>
         <label className="case-detail-label" htmlFor="edit-customer">Customer</label>
-        <input
-          id="edit-customer"
-          className="case-detail-value"
-          type="text"
-          value={customer}
-          onChange={(e) => setCustomer(e.target.value)}
-        />
+        <div className="autocomplete-wrapper">
+          <input
+            ref={customerInputRef}
+            id="edit-customer"
+            className="case-detail-value"
+            type="text"
+            value={customer}
+            autoComplete="off"
+            onChange={(e) => {
+              setCustomer(e.target.value);
+              setShowCustomerSuggestions(true);
+              setError(null);
+            }}
+            onFocus={() => setShowCustomerSuggestions(true)}
+          />
+          {showCustomerSuggestions && filteredCustomers.length > 0 && (
+            <ul className="autocomplete-list" ref={customerSuggestionsRef}>
+              {filteredCustomers.slice(0, 10).map((name) => (
+                <li
+                  key={name}
+                  className="autocomplete-item"
+                  onMouseDown={() => {
+                    setCustomer(name);
+                    setShowCustomerSuggestions(false);
+                  }}
+                >
+                  <span className="autocomplete-name">{name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
       <div className="case-detail-row" style={{ position: "relative" }}>
         <label className="case-detail-label" htmlFor="edit-responsible">Responsible</label>

@@ -32,6 +32,13 @@ async def create_user(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail='Only admins can create users.')
 
+    is_super_admin = current_user.is_admin and not current_user.parent_id
+    if not is_super_admin:
+        # Company admins can only create sub-users under themselves
+        if user.is_admin:
+            raise HTTPException(status_code=403, detail='Company admins cannot create admin users.')
+        user.parent_id = current_user.username
+
     try:
         new_user = db_create_user(db=db, user_create=user)
         return new_user
@@ -96,9 +103,21 @@ async def get_all_users(
     _current_user: Annotated[User, Depends(get_user_from_cookie)],
     db: Session = Depends(get_db),  # noqa: B008
 ) -> List[User]:
-    """Get all users. Requires authentication."""
+    """Get all users. Scoped by role: super admin sees all, others see own company."""
     try:
-        users = db.query(UserDB).all()
+        is_super_admin = _current_user.is_admin and not _current_user.parent_id
+        if is_super_admin:
+            users = db.query(UserDB).all()
+        elif _current_user.is_admin:
+            # Company admin: see self + own sub-users
+            users = db.query(UserDB).filter(
+                (UserDB.username == _current_user.username) | (UserDB.parent_id == _current_user.username),
+            ).all()
+        else:
+            # Regular user: see users in same company (same parent)
+            users = db.query(UserDB).filter(
+                (UserDB.username == _current_user.parent_id) | (UserDB.parent_id == _current_user.parent_id),
+            ).all()
         return [User.model_validate(user) for user in users]
     except Exception as e:
         raise HTTPException(
@@ -121,6 +140,10 @@ async def delete_user_by_id(
     user_db = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not user_db:
         raise HTTPException(status_code=404, detail="User not found.")
+    # Company admins can only delete their own sub-users
+    is_super_admin = current_user.is_admin and not current_user.parent_id
+    if not is_super_admin and user_db.parent_id != current_user.username:
+        raise HTTPException(status_code=403, detail="You can only delete users you manage.")
     from src.api.v1.case.models import CaseDB  # local import to avoid circular dependency
 
     has_cases = db.query(CaseDB).filter(CaseDB.user_id == user_id).first() is not None
@@ -140,9 +163,16 @@ async def get_user_cases(
     current_user: Annotated[User, Depends(get_user_from_cookie)],
     db: Session = Depends(get_db),  # noqa: B008
 ) -> list:
-    """Get all cases for a user. Admins can view any user; users can view their own."""
-    if not current_user.is_admin and current_user.username != user_id:
-        raise HTTPException(status_code=403, detail="You can only view your own cases.")
+    """Get all cases for a user. Admins can view managed users; users can view their own."""
+    if current_user.username != user_id:
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="You can only view your own cases.")
+        # Company admins can only view cases for their own sub-users
+        is_super_admin = current_user.is_admin and not current_user.parent_id
+        if not is_super_admin:
+            target = db.query(UserDB).filter(UserDB.username == user_id).first()
+            if not target or target.parent_id != current_user.username:
+                raise HTTPException(status_code=403, detail="You can only view cases for users you manage.")
     from src.api.v1.case.models import db_get_cases_by_responsible_user  # local import to avoid circular dependency
 
     return db_get_cases_by_responsible_user(db=db, user_id=user_id)

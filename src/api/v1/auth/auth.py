@@ -35,14 +35,16 @@ if not _default_secret:
 SECRET_KEY = _default_secret
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
-_SECURE_COOKIES = os.getenv("COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
+_SECURE_COOKIES = os.getenv("COOKIE_SECURE", "true").lower() in ("true", "1", "yes")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
-# Rate limiter — disabled by default (local dev). Set AUTH_RATE_LIMIT in production (e.g. "10/minute").
+# Rate limiter — disabled by default. Set AUTH_RATE_LIMIT in production (e.g. '10/minute').
 _AUTH_RATE_LIMIT = os.getenv("AUTH_RATE_LIMIT", "")
 _RATE_LIMIT_ENABLED = bool(_AUTH_RATE_LIMIT)
+if not _RATE_LIMIT_ENABLED:
+    logger.info("AUTH_RATE_LIMIT not set — rate limiting is disabled")
 limiter = Limiter(key_func=get_remote_address, enabled=_RATE_LIMIT_ENABLED)
 
 

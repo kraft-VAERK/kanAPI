@@ -1,17 +1,20 @@
 """Module defines the data models for the case management system."""
 
+import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 import pydantic
 from fastapi import HTTPException
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, or_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Query, Session
 
 from src.api.db.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class CaseDB(Base):
@@ -42,19 +45,19 @@ class DocumentInfo(pydantic.BaseModel):
 class CaseCreate(pydantic.BaseModel):
     """Model for creating a new case."""
 
-    responsible_person: str
+    responsible_person: str = Field(max_length=255)
     responsible_user_id: Optional[str] = None
-    status: str
-    customer: str
+    status: Literal['open', 'pending', 'in_progress', 'closed']
+    customer: str = Field(max_length=255)
     company_id: str
 
 
 class CaseUpdate(pydantic.BaseModel):
     """Model for updating an existing case."""
 
-    responsible_person: Optional[str] = None
-    status: Optional[str] = None
-    customer: Optional[str] = None
+    responsible_person: Optional[str] = Field(default=None, max_length=255)
+    status: Optional[Literal['open', 'pending', 'in_progress', 'closed']] = None
+    customer: Optional[str] = Field(default=None, max_length=255)
     archived: Optional[bool] = None
     updated_at: Optional[datetime] = None
 
@@ -141,7 +144,8 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
         )
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 def db_get_case(db: Session, case_id: str) -> Optional[Case]:
@@ -237,7 +241,8 @@ def db_update_case(
         return None
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
@@ -363,7 +368,8 @@ def db_delete_case(db: Session, case_id: str) -> bool:
         return True
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e!s}") from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 # ─── Case activity ─────────────────────────────────────────────────────────────
@@ -416,7 +422,8 @@ def db_log_activity(
         db.commit()
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 def db_get_case_activities(db: Session, case_id: str) -> list[CaseActivity]:

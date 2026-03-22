@@ -1,15 +1,18 @@
 """SQLAlchemy ORM model for User table."""
 
+import logging
 from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.api.db.database import Base
+
+logger = logging.getLogger(__name__)
 
 
 class UserDB(Base):
@@ -80,9 +83,9 @@ class UserCreate(pydantic.BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     username: Optional[str] = None  # auto-generated if not provided
-    email: str
-    password: str
-    full_name: Optional[str] = None
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=128)
+    full_name: Optional[str] = Field(default=None, max_length=255)
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
 
@@ -129,7 +132,8 @@ def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optio
         return User.model_validate(user_db)
     except SQLAlchemyError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e
+        logger.exception("Database error: %s", e)
+        raise HTTPException(status_code=500, detail="Database error") from e
 
 
 def db_create_user(db: Session, user_create: UserCreate) -> "User":

@@ -375,16 +375,22 @@ def test_update_case_responsible_logs_responsible_changed() -> None:
     companies = s.get(f"{BASE}/company/").json()
     company_id = companies[0]["id"]
 
-    case = _create_case(s, company_id, responsible_person="Alice", customer="Responsible Change Test")
+    # Fetch two real sub-users from Acme to use as responsible persons
+    users = s.get(f"{BASE}/company/my-users").json()
+    assert len(users) >= 2, f"Need at least 2 Acme sub-users, got {len(users)}"
+    user_a = users[0]["full_name"] or users[0]["username"]
+    user_b = users[1]["full_name"] or users[1]["username"]
+
+    case = _create_case(s, company_id, responsible_person=user_a, customer="Responsible Change Test")
     try:
-        r = s.patch(f"{BASE}/case/{case['id']}", json={"responsible_person": "Bob"})
+        r = s.patch(f"{BASE}/case/{case['id']}", json={"responsible_person": user_b})
         assert r.status_code == 200, f"PATCH failed: {r.text}"
 
         activity = s.get(f"{BASE}/case/{case['id']}/activity").json()
         entry = next((e for e in activity if e["action"] == "responsible_changed"), None)
         assert entry is not None, f"responsible_changed not found in activity: {activity}"
-        assert "Alice" in entry["detail"]
-        assert "Bob" in entry["detail"]
+        assert user_a in entry["detail"]
+        assert user_b in entry["detail"]
     finally:
         s.delete(f"{BASE}/case/{case['id']}")
 

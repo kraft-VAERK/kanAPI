@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { API } from "./dashboard/constants";
@@ -47,6 +47,21 @@ export default function Dashboard() {
     navigate("/", { replace: true });
   }
 
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
+
+  const toggleTheme = useCallback(() => {
+    setDark(prev => {
+      const next = !prev;
+      localStorage.setItem('theme', next ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+
   if (!user) return null;
 
   const isSuperAdmin = user.is_admin && !user.parent_id;
@@ -58,6 +73,9 @@ export default function Dashboard() {
       <span>{user.username}</span>
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
         {toast && <span className="toast-success">{toast}</span>}
+        <button className="theme-toggle" onClick={toggleTheme} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+          {dark ? '\u2600' : '\u263E'}
+        </button>
         <button onClick={() => navigate("/dashboard/profile")}>Profile</button>
         <button onClick={handleLogout}>Logout</button>
       </div>

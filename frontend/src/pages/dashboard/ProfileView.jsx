@@ -52,6 +52,7 @@ export function ProfileView({ user }) {
         return;
       }
       setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     } catch {
       setError("Network error.");
     } finally {

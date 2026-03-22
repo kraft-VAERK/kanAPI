@@ -153,6 +153,42 @@ async def delete_case(
         await delete_tuple(assignee_id, 'assignee', 'case', case_id)
 
 
+def _validate_update_fields(db: Session, update_data: dict, old: CaseDB, current_user: User) -> None:
+    """Validate customer transfer and responsible person change before applying an update."""
+    if 'customer' in update_data and update_data['customer'] != old.customer:
+        existing = db.query(CaseDB.customer).filter(
+            CaseDB.company_id == old.company_id,
+            CaseDB.customer == update_data['customer'],
+        ).first()
+        if not existing:
+            raise HTTPException(
+                status_code=http.HTTPStatus.BAD_REQUEST,
+                detail=f'Customer "{update_data["customer"]}" does not exist for this company.',
+            )
+
+    if 'responsible_person' in update_data:
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=http.HTTPStatus.FORBIDDEN,
+                detail='Only admins can change the responsible person.',
+            )
+        name = update_data['responsible_person']
+        case_creator = db.query(UserDB).filter(UserDB.username == old.user_id).first()
+        if case_creator:
+            team_parent = case_creator.username if case_creator.is_admin else case_creator.parent_id
+        else:
+            team_parent = None
+        user_match = db.query(UserDB).filter(
+            (UserDB.parent_id == team_parent) | (UserDB.username == team_parent),
+            (UserDB.full_name == name) | (UserDB.username == name),
+        ).first() if team_parent else None
+        if not user_match:
+            raise HTTPException(
+                status_code=http.HTTPStatus.BAD_REQUEST,
+                detail=f'User "{name}" not found in this company.',
+            )
+
+
 @router.patch(
     '/{case_id}',
     response_model=Case,
@@ -168,45 +204,24 @@ async def update_case(
     """Apply a partial update to a case and log field changes."""
     update_data = case_update.model_dump(exclude_unset=True)
     old = _get_case_db_or_404(db, case_id)
-
-    # Only admins can change the responsible person
-    if 'responsible_person' in update_data:
-        if not current_user.is_admin:
-            raise HTTPException(
-                status_code=http.HTTPStatus.FORBIDDEN,
-                detail='Only admins can change the responsible person.',
-            )
-        name = update_data['responsible_person']
-        # Find users who belong to the same company as this case
-        company_user_ids = (
-            db.query(CaseDB.user_id)
-            .filter(CaseDB.company_id == old.company_id)
-            .distinct()
-            .subquery()
-        )
-        user_match = db.query(UserDB).filter(
-            UserDB.username.in_(company_user_ids),
-            (UserDB.full_name == name) | (UserDB.username == name),
-        ).first()
-        if not user_match:
-            raise HTTPException(
-                status_code=http.HTTPStatus.BAD_REQUEST,
-                detail=f'User "{name}" not found in this company.',
-            )
+    _validate_update_fields(db, update_data, old, current_user)
 
     # Capture values before db_update_case modifies the same ORM object in-place
+    old_customer = old.customer
     old_status = old.status
     old_responsible = old.responsible_person
     old_responsible_user_id = old.responsible_user_id
     result = db_update_case(db=db, case_id=case_id, case_update=case_update)
     if not result:
         raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Case not found.')
+    if 'customer' in update_data and update_data['customer'] != old_customer:
+        detail = f'{old_customer} → {update_data["customer"]}'
+        db_log_activity(db, case_id, current_user.username, 'customer_changed', detail)
     if 'status' in update_data and update_data['status'] != old_status:
         db_log_activity(db, case_id, current_user.username, 'status_changed', f'{old_status} → {update_data["status"]}')
     if 'responsible_person' in update_data and update_data['responsible_person'] != old_responsible:
         detail = f'{old_responsible} → {update_data["responsible_person"]}'
         db_log_activity(db, case_id, current_user.username, 'responsible_changed', detail)
-        # Update the FGA assignee tuple so the new responsible person gets editor access
         new_responsible_user_id = db.query(CaseDB.responsible_user_id).filter(CaseDB.id == case_id).scalar()
         if old_responsible_user_id:
             await delete_tuple(old_responsible_user_id, 'assignee', 'case', case_id)
@@ -263,7 +278,10 @@ async def delete_case_document_endpoint(
 ) -> None:
     """Delete a single document from MinIO and log the action."""
     _get_case_db_or_404(db, case_id)
-    delete_case_document(case_id, filename)
+    try:
+        delete_case_document(case_id, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=http.HTTPStatus.BAD_REQUEST, detail=str(e)) from e
     db_log_activity(db, case_id, current_user.username, 'document_deleted', filename)
 
 
@@ -279,9 +297,14 @@ async def download_case_document(
 ) -> StreamingResponse:
     """Stream a document from MinIO to the client."""
     _get_case_db_or_404(db, case_id)
-    stream, content_type = stream_case_document(case_id, filename)
+    try:
+        stream, content_type = stream_case_document(case_id, filename)
+    except ValueError as e:
+        raise HTTPException(status_code=http.HTTPStatus.BAD_REQUEST, detail=str(e)) from e
+    from urllib.parse import quote
+    safe_filename = quote(filename, safe='')
     return StreamingResponse(
         stream,
         media_type=content_type,
-        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+        headers={'Content-Disposition': f"attachment; filename*=UTF-8''{safe_filename}"},
     )

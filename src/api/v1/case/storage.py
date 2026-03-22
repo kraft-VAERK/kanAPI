@@ -1,16 +1,27 @@
 """MinIO document storage helpers."""
 
+import os
+
 from minio import Minio
 from minio.error import S3Error
 
 BUCKET = 'kanapi'
 
 _client = Minio(
-    'localhost:9000',
-    access_key='minioadmin',
-    secret_key='minioadmin',
-    secure=False,
+    os.environ.get('MINIO_ENDPOINT', 'localhost:9000'),
+    access_key=os.environ.get('MINIO_ACCESS_KEY', 'minioadmin'),
+    secret_key=os.environ.get('MINIO_SECRET_KEY', 'minioadmin'),
+    secure=os.environ.get('MINIO_SECURE', 'false').lower() in ('true', '1', 'yes'),
 )
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Validate and sanitize a filename to prevent path traversal."""
+    if not filename or '\0' in filename:
+        raise ValueError('Invalid filename')
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise ValueError('Invalid filename: path traversal detected')
+    return filename
 
 
 def ensure_bucket() -> None:
@@ -48,11 +59,13 @@ def delete_case_documents(case_id: str) -> None:
 
 def delete_case_document(case_id: str, filename: str) -> None:
     """Delete a single document from MinIO."""
-    _client.remove_object(BUCKET, f'cases/{case_id}/{filename}')
+    safe_name = _sanitize_filename(filename)
+    _client.remove_object(BUCKET, f'cases/{case_id}/{safe_name}')
 
 
 def stream_case_document(case_id: str, filename: str) -> tuple:
     """Return (HTTPResponse, content_type) for the requested document."""
-    obj = _client.get_object(BUCKET, f'cases/{case_id}/{filename}')
+    safe_name = _sanitize_filename(filename)
+    obj = _client.get_object(BUCKET, f'cases/{case_id}/{safe_name}')
     content_type = obj.headers.get('content-type', 'application/octet-stream')
     return obj, content_type
