@@ -77,7 +77,18 @@
       "Bash(rtk make:*)",
       "Bash(rtk lint:*)",
       "Bash(echo $VIRTUAL_ENV)",
-      "Bash(unset VIRTUAL_ENV)"
+      "Bash(unset VIRTUAL_ENV)",
+      "Bash(python3 -c \"import openfga_sdk; import inspect; members = [m for m in dir\\(openfga_sdk\\) if ''error'' in m.lower\\(\\) or ''exception'' in m.lower\\(\\) or ''validation'' in m.lower\\(\\)]; print\\(members\\)\")",
+      "Bash(python3 -c \"from openfga_sdk.exceptions import FgaValidationError; print\\(''FgaValidationError exists''\\)\")",
+      "Bash(python3 -c \"from openfga_sdk.exceptions import ApiException; print\\(''ApiException exists''\\)\")",
+      "Bash(python3 -c \"import openfga_sdk.exceptions as e; print\\([x for x in dir\\(e\\) if not x.startswith\\(''_''\\)]\\)\")",
+      "Bash(uv add:*)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"pytest\")",
+      "Bash(rtk docker:*)",
+      "Bash(rtk uv:*)",
+      "Bash(printf 'y\\\\nq\\\\n')",
+      "Bash(git add:*)"
     ]
   }
 }
