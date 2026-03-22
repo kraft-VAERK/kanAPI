@@ -93,7 +93,8 @@
       "Bash(echo $?)",
       "Bash(pg_isready -h localhost -p 5433)",
       "Bash(python3 -c \"from openfga_sdk.client import ClientConfiguration; help\\(ClientConfiguration.__init__\\)\")",
-      "Bash(openssl rand:*)"
+      "Bash(openssl rand:*)",
+      "Bash(node -e \":*)"
     ]
   }
 }

@@ -6,6 +6,7 @@ import { CaseDetailPage } from "./dashboard/CaseDetailPage";
 import { CompanyAdminDashboard } from "./dashboard/CompanyAdminDashboard";
 import { ProfileView } from "./dashboard/ProfileView";
 import { SuperAdminDashboard } from "./dashboard/SuperAdminDashboard";
+import { CustomerProfilePage } from "./dashboard/CustomerProfilePage";
 import { UserDashboard } from "./dashboard/UserDashboard";
 import { UserProfileView } from "./dashboard/UserProfileView";
 
@@ -14,7 +15,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { caseId, userId } = useParams();
+  const { caseId, userId, companyId } = useParams();
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: "include" })
@@ -100,6 +101,15 @@ export default function Dashboard() {
           userId={userId}
           viewerIsSuperAdmin={user.is_admin && !user.parent_id}
         />
+      </>
+    );
+
+  const isCustomerProfile = location.pathname.startsWith('/customer/');
+  if (isCustomerProfile && companyId)
+    return (
+      <>
+        {header}
+        <CustomerProfilePage companyId={companyId} user={user} />
       </>
     );
 

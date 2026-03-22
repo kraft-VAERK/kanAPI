@@ -8,8 +8,8 @@ export function CustomersTable({ customers, onSelect }) {
         </tr>
       </thead>
       <tbody>
-        {customers.map(({ name, count }) => (
-          <tr key={name} className="clickable" onClick={() => onSelect(name)}>
+        {customers.map(({ name, count, company_id }) => (
+          <tr key={name} className="clickable" onClick={() => onSelect(name, company_id)}>
             <td>{name}</td>
             <td>{count}</td>
           </tr>

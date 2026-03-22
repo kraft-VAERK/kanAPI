@@ -51,12 +51,12 @@ export function UserDashboard({ user }) {
   }, [tab, customer, debouncedQ, searchStatus, searchArchived, myResponsible]);
 
   const customerMap = {};
-  for (const c of cases)
-    customerMap[c.customer] = (customerMap[c.customer] || 0) + 1;
-  const customers = Object.entries(customerMap).map(([name, count]) => ({
-    name,
-    count,
-  }));
+  for (const c of cases) {
+    const key = `${c.customer}\0${c.company_id}`;
+    if (!customerMap[key]) customerMap[key] = { name: c.customer, count: 0, company_id: c.company_id };
+    customerMap[key].count += 1;
+  }
+  const customers = Object.values(customerMap);
 
   const filteredCases = myResponsible
     ? cases.filter((c) => c.responsible_user_id === user?.username)
@@ -103,6 +103,7 @@ export function UserDashboard({ user }) {
             onArchivedChange={setSearchArchived}
             responsible={myResponsible}
             onResponsibleChange={(v) => { setMyResponsible(v); setPage(1); }}
+            onCreate={() => setShowCreate(true)}
           />
           {cases.length === 0 ? (
             <p className="no-cases">No cases found.</p>
@@ -113,8 +114,8 @@ export function UserDashboard({ user }) {
                 onCaseClick={(c) =>
                   navigate(`/case/${c.id}`, { state: { case: c } })
                 }
-                onCustomerClick={(name) =>
-                  navigate(`/dashboard/customers/${encodeURIComponent(name)}`)
+                onCustomerClick={(name, companyId) =>
+                  navigate(`/customer/${companyId}`, { state: { customerName: name } })
                 }
               />
               <Pagination
@@ -123,6 +124,18 @@ export function UserDashboard({ user }) {
                 setPage={setPage}
               />
             </>
+          )}
+          {showCreate && (
+            <CreateCaseModal
+              customers={customers}
+              currentUsername={user?.full_name || user?.username}
+              currentUserId={user?.username}
+              onClose={() => setShowCreate(false)}
+              onCreated={() => {
+                setShowCreate(false);
+                fetchCases(debouncedQ, searchStatus, searchArchived);
+              }}
+            />
           )}
         </>
       )}
@@ -136,8 +149,8 @@ export function UserDashboard({ user }) {
             <>
               <CustomersTable
                 customers={pageSlice}
-                onSelect={(name) =>
-                  navigate(`/dashboard/customers/${encodeURIComponent(name)}`)
+                onSelect={(name, companyId) =>
+                  navigate(`/customer/${companyId}`, { state: { customerName: name } })
                 }
               />
               <Pagination
@@ -163,9 +176,6 @@ export function UserDashboard({ user }) {
               ← Back
             </button>
             <h2>{customer}</h2>
-            <button className="create-btn" onClick={() => setShowCreate(true)}>
-              + New Case
-            </button>
           </div>
           <CaseSearchBar
             q={searchQ}
@@ -193,21 +203,6 @@ export function UserDashboard({ user }) {
                 setPage={setPage}
               />
             </>
-          )}
-          {showCreate && (
-            <CreateCaseModal
-              fixedCompanyId={
-                cases.find((c) => c.customer === customer)?.company_id || ""
-              }
-              fixedCustomer={customer}
-              currentUsername={user?.full_name || user?.username}
-              currentUserId={user?.username}
-              onClose={() => setShowCreate(false)}
-              onCreated={() => {
-                setShowCreate(false);
-                fetchCases(debouncedQ, searchStatus, searchArchived);
-              }}
-            />
           )}
         </>
       )}

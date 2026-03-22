@@ -141,8 +141,12 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
 
   function deriveClients(fetchedCases) {
     const map = {};
-    for (const c of fetchedCases) map[c.customer] = (map[c.customer] || 0) + 1;
-    setClients(Object.entries(map).map(([name, count]) => ({ name, count })));
+    for (const c of fetchedCases) {
+      const key = `${c.customer}\0${c.company_id}`;
+      if (!map[key]) map[key] = { name: c.customer, count: 0, company_id: c.company_id };
+      map[key].count += 1;
+    }
+    setClients(Object.values(map));
   }
 
   function fetchCases(q, status, archived) {
@@ -292,10 +296,8 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
           <>
             <CustomersTable
               customers={pageSlice}
-              onSelect={(name) =>
-                navigate(
-                  `/company/${companyId}/clients/${encodeURIComponent(name)}`,
-                )
+              onSelect={(name, cId) =>
+                navigate(`/customer/${cId}`, { state: { customerName: name } })
               }
             />
             <Pagination page={page} totalPages={totalPages} setPage={setPage} />

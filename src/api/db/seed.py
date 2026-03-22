@@ -124,6 +124,9 @@ def _add_company(
     email: str | None = None,
     phone: str | None = None,
     address: str | None = None,
+    ceo: str | None = None,
+    business_number: str | None = None,
+    hq_origin: str | None = None,
     owner_id: str | None = None,
 ) -> str:
     cid = str(uuid7())
@@ -134,6 +137,9 @@ def _add_company(
             email=email,
             phone=phone,
             address=address,
+            ceo=ceo,
+            business_number=business_number,
+            hq_origin=hq_origin,
             owner_id=owner_id,
             created_at=datetime.now(timezone.utc),
         ),
@@ -267,6 +273,9 @@ def run() -> None:
             email="contact@acme.dev",
             phone="+1-800-226-3000",
             address="123 Main St, Springfield",
+            ceo="Wile E. Coyote",
+            business_number="ACM-2024-001",
+            hq_origin="Springfield, IL",
         )
         globex_co_id = _add_company(
             db,
@@ -274,16 +283,44 @@ def run() -> None:
             email="info@globex.dev",
             phone="+1-800-456-7890",
             address="1 Industrial Ave, Shelbyville",
+            ceo="Hank Scorpio",
+            business_number="GLX-2024-002",
+            hq_origin="Shelbyville, TN",
         )
         # Client companies owned by Acme
-        acme_client1_id = _add_company(db, name="Springfield Legal", email="legal@springfield.dev", owner_id=acme_co_id)
-        acme_client2_id = _add_company(db, name="Burns & Associates", email="burns@associates.dev", owner_id=acme_co_id)
+        acme_client1_id = _add_company(
+            db,
+            name="Springfield Legal",
+            email="legal@springfield.dev",
+            phone="+1-555-742-0001",
+            address="742 Evergreen Terrace, Springfield",
+            owner_id=acme_co_id,
+            ceo="Lionel Hutz",
+            business_number="SPL-2024-010",
+            hq_origin="Springfield, IL",
+        )
+        acme_client2_id = _add_company(
+            db,
+            name="Burns & Associates",
+            email="burns@associates.dev",
+            phone="+1-555-100-0003",
+            address="1000 Mammon Lane, Springfield",
+            owner_id=acme_co_id,
+            ceo="C. Montgomery Burns",
+            business_number="BNA-2024-003",
+            hq_origin="Springfield, IL",
+        )
         # Client companies owned by Globex
         globex_client1_id = _add_company(
             db,
             name="Shelbyville Partners",
             email="partners@shelbyville.dev",
+            phone="+1-555-300-0050",
+            address="50 Commerce Blvd, Shelbyville",
             owner_id=globex_co_id,
+            ceo="Joe Quimby",
+            business_number="SBP-2024-005",
+            hq_origin="Shelbyville, TN",
         )
 
         # ── Cases ────────────────────────────────────────────────────────────

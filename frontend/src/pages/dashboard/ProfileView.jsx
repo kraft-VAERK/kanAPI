@@ -46,7 +46,6 @@ export function ProfileView({ user }) {
         return;
       }
       if (username !== user.username) {
-        // Session JWT still holds the old username — must re-login.
         await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
         navigate("/", { replace: true });
         return;
@@ -60,98 +59,115 @@ export function ProfileView({ user }) {
     }
   }
 
+  const totalPages = Math.max(1, Math.ceil(cases.length / PAGE_SIZE));
+  const pageSlice = cases.slice((casesPage - 1) * PAGE_SIZE, casesPage * PAGE_SIZE);
+
   return (
     <>
-      <div className="profile-card">
-        <div className="profile-header">
-          <div className="profile-avatar">{initials}</div>
-          <div className="profile-header-info">
-            <span className="profile-header-name">
-              {user.full_name || user.username}
-            </span>
-            <span className="profile-header-role">{role}</span>
-          </div>
-        </div>
-
-        <div className="profile-fields">
-          <div className="profile-field">
-            <label>Username</label>
-            <input
-              value={username}
-              onChange={(e) => {
-                setUsername(e.target.value);
-                setSuccess(false);
-              }}
-            />
-          </div>
-          <div className="profile-field">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setSuccess(false);
-              }}
-            />
-          </div>
-          <div className="profile-field">
-            <label>Full name</label>
-            <div className="profile-field-static">{user.full_name || "—"}</div>
-          </div>
-          <div className="profile-field">
-            <label>Status</label>
-            <div className="profile-badge">
-              {user.is_active ? "Active" : "Inactive"}
-            </div>
-          </div>
-        </div>
-
-        {(dirty || error || success) && (
-          <div className="profile-save-row">
-            {dirty && (
-              <button
-                className="profile-save-btn"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Save changes"}
-              </button>
-            )}
-            {error && <span className="form-error">{error}</span>}
-            {success && <span className="profile-success">Changes saved.</span>}
-          </div>
-        )}
+      <div className="section-heading">
+        <button className="back-btn" onClick={() => navigate(-1)}>
+          ← Back
+        </button>
       </div>
 
-      <section className="detail-section">
-        <h3 className="detail-section-title">
-          Cases{" "}
-          {cases.length > 0 && (
-            <span className="detail-count">({cases.length})</span>
+      <div className="customer-hero">
+        <div className="customer-hero-avatar">{initials}</div>
+        <h2 className="customer-hero-name">{user.full_name || user.username}</h2>
+        <span className="customer-hero-tag">{role}</span>
+
+        <div className="customer-stats">
+          <div className="customer-stat">
+            <span className="customer-stat-value">{cases.length}</span>
+            <span className="customer-stat-label">Cases</span>
+          </div>
+          <div className="customer-stat">
+            <span className="customer-stat-value">
+              {user.is_active ? "Active" : "Inactive"}
+            </span>
+            <span className="customer-stat-label">Status</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="customer-info-grid">
+        <div className="customer-info-card">
+          <span className="customer-info-icon">@</span>
+          <div className="customer-info-content">
+            <span className="customer-info-label">Username</span>
+            <input
+              className="profile-inline-input"
+              value={username}
+              onChange={(e) => { setUsername(e.target.value); setSuccess(false); }}
+            />
+          </div>
+        </div>
+        <div className="customer-info-card">
+          <span className="customer-info-icon">✉</span>
+          <div className="customer-info-content">
+            <span className="customer-info-label">Email</span>
+            <input
+              className="profile-inline-input"
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setSuccess(false); }}
+            />
+          </div>
+        </div>
+        <InfoCard icon="☺" label="Full Name" value={user.full_name} />
+        <InfoCard icon="⚑" label="Parent" value={user.parent_id || "—"} />
+      </div>
+
+      {(dirty || error || success) && (
+        <div className="profile-save-row">
+          {dirty && (
+            <button
+              className="profile-save-btn"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
           )}
-        </h3>
-        {cases.length === 0 ? (
-          <p className="no-cases">No cases assigned to you.</p>
-        ) : (
-          <>
-            <CasesTable
-              cases={cases.slice(
-                (casesPage - 1) * PAGE_SIZE,
-                casesPage * PAGE_SIZE,
-              )}
-              onCaseClick={(c) =>
-                navigate(`/case/${c.id}`, { state: { case: c } })
-              }
-            />
-            <Pagination
-              page={casesPage}
-              totalPages={Math.max(1, Math.ceil(cases.length / PAGE_SIZE))}
-              setPage={setCasesPage}
-            />
-          </>
-        )}
-      </section>
+          {error && <span className="form-error">{error}</span>}
+          {success && <span className="profile-success">Changes saved.</span>}
+        </div>
+      )}
+
+      <div className="tabs" style={{ marginTop: "1.5rem" }}>
+        <button className="tab active">
+          Cases{cases.length > 0 ? ` (${cases.length})` : ""}
+        </button>
+      </div>
+
+      {cases.length === 0 ? (
+        <p className="no-cases">No cases assigned to you.</p>
+      ) : (
+        <>
+          <CasesTable
+            cases={pageSlice}
+            onCaseClick={(c) =>
+              navigate(`/case/${c.id}`, { state: { case: c } })
+            }
+          />
+          <Pagination
+            page={casesPage}
+            totalPages={totalPages}
+            setPage={setCasesPage}
+          />
+        </>
+      )}
     </>
+  );
+}
+
+function InfoCard({ icon, label, value }) {
+  return (
+    <div className="customer-info-card">
+      <span className="customer-info-icon">{icon}</span>
+      <div className="customer-info-content">
+        <span className="customer-info-label">{label}</span>
+        <span className="customer-info-value">{value || "—"}</span>
+      </div>
+    </div>
   );
 }

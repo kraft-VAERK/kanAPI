@@ -7,6 +7,7 @@ export function CreateCaseModal({
   onCreated,
   fixedCompanyId = null,
   fixedCustomer = null,
+  customers = [],
   users = null,
   currentUsername = null,
   currentUserId = null,
@@ -21,6 +22,13 @@ export function CreateCaseModal({
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  // Derive company_id: fixed > from matching customer in cases > fallback
+  function resolveCompanyId() {
+    if (fixedCompanyId) return fixedCompanyId;
+    const match = customers.find((c) => c.name === form.customer.trim());
+    return match?.company_id || customers[0]?.company_id || "";
   }
 
   async function submit(e) {
@@ -39,7 +47,8 @@ export function CreateCaseModal({
       setError("Customer is required.");
       return;
     }
-    if (!fixedCompanyId) {
+    const companyId = resolveCompanyId();
+    if (!companyId) {
       setError("Client company is required.");
       return;
     }
@@ -55,7 +64,7 @@ export function CreateCaseModal({
           responsible_user_id: responsibleUserId,
           status: form.status,
           customer: form.customer.trim(),
-          company_id: fixedCompanyId,
+          company_id: companyId,
         }),
       });
       if (!res.ok) {
@@ -80,10 +89,18 @@ export function CreateCaseModal({
             <label>
               Customer / Contact *
               <input
+                list="customer-options"
                 value={form.customer}
                 onChange={(e) => set("customer", e.target.value)}
-                placeholder="Person or organisation name"
+                placeholder="Select or type a new customer"
               />
+              {customers.length > 0 && (
+                <datalist id="customer-options">
+                  {customers.map((c) => (
+                    <option key={c.name} value={c.name} />
+                  ))}
+                </datalist>
+              )}
             </label>
           )}
           {users ? (

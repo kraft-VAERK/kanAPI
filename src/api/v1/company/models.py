@@ -29,6 +29,9 @@ class CompanyDB(Base):
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     address = Column(String, nullable=True)
+    ceo = Column(String, nullable=True)
+    business_number = Column(String, nullable=True)
+    hq_origin = Column(String, nullable=True)
     owner_id = Column(UUID(as_uuid=False), ForeignKey('companies.id', ondelete='SET NULL'), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
 
@@ -43,6 +46,9 @@ class Company(pydantic.BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    ceo: Optional[str] = None
+    business_number: Optional[str] = None
+    hq_origin: Optional[str] = None
     owner_id: Optional[str] = None
     created_at: datetime
 
@@ -54,6 +60,9 @@ class CompanyCreate(pydantic.BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(default=None, max_length=50)
     address: Optional[str] = Field(default=None, max_length=500)
+    ceo: Optional[str] = Field(default=None, max_length=255)
+    business_number: Optional[str] = Field(default=None, max_length=100)
+    hq_origin: Optional[str] = Field(default=None, max_length=255)
     owner_id: Optional[str] = None
 
 
@@ -66,6 +75,9 @@ def db_create_company(db: Session, company_create: CompanyCreate) -> Company:
             email=company_create.email,
             phone=company_create.phone,
             address=company_create.address,
+            ceo=company_create.ceo,
+            business_number=company_create.business_number,
+            hq_origin=company_create.hq_origin,
             owner_id=company_create.owner_id,
             created_at=datetime.now(timezone.utc),
         )

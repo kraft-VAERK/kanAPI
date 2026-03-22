@@ -7,6 +7,7 @@ export function CaseSearchBar({
   onArchivedChange,
   responsible,
   onResponsibleChange,
+  onCreate,
 }) {
   return (
     <div className="search-bar">
@@ -37,6 +38,11 @@ export function CaseSearchBar({
           onClick={() => onResponsibleChange(!responsible)}
         >
           Responsible
+        </button>
+      )}
+      {onCreate && (
+        <button className="create-btn" onClick={onCreate}>
+          + New Case
         </button>
       )}
     </div>

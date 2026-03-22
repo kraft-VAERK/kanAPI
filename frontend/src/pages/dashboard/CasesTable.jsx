@@ -19,7 +19,7 @@ export function CasesTable({ cases, onCaseClick, onCustomerClick }) {
                   className="link-btn"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCustomerClick(c.customer);
+                    onCustomerClick(c.customer, c.company_id);
                   }}
                 >
                   {c.customer}

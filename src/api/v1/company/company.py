@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db as get_db_session
 from src.api.v1.auth.auth import get_current_user_from_cookie
+from src.api.v1.auth.fga import filter_by_permission
 from src.api.v1.case.models import Case, CaseDB, _apply_case_filters
 from src.api.v1.company.models import (
     Company,
@@ -17,6 +18,7 @@ from src.api.v1.company.models import (
     db_delete_company,
     db_get_client_companies,
     db_get_companies,
+    db_get_company,
 )
 from src.api.v1.user.models import User, UserDB, UserPublic
 
@@ -125,6 +127,15 @@ async def get_my_company_cases(
     ]
 
 
+@router.get('/{company_id}', response_model=Company, status_code=http.HTTPStatus.OK)
+async def get_company(company_id: str, _current_user: CurrentUser, db: DbSession) -> Company:
+    """Return a single company by ID. Any authenticated user can view."""
+    company = db_get_company(db=db, company_id=company_id)
+    if not company:
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Company not found.')
+    return company
+
+
 @router.get('/{company_id}/clients', response_model=list[Company], status_code=http.HTTPStatus.OK)
 async def get_client_companies(company_id: str, current_user: CurrentUser, db: DbSession) -> list[Company]:
     """Return all client companies owned by this company."""
@@ -152,17 +163,21 @@ async def get_company_cases(
     status: Optional[str] = Query(default=None, description='Filter by exact status value'),
     archived: Optional[bool] = Query(default=None, description='Filter by archived state'),
 ) -> list[Case]:
-    """Return all cases linked to this company or any of its direct client companies."""
-    _require_super_admin(current_user)
-    client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
-    all_ids = [company_id, *client_ids]
-    query = db.query(CaseDB).filter(CaseDB.company_id.in_(all_ids))
+    """Return cases for this company. Super admins see client-company cases too; others are FGA-filtered."""
+    is_super = current_user.is_admin and not current_user.parent_id
+    if is_super:
+        client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
+        all_ids = [company_id, *client_ids]
+        query = db.query(CaseDB).filter(CaseDB.company_id.in_(all_ids))
+    else:
+        query = db.query(CaseDB).filter(CaseDB.company_id == company_id)
     query = _apply_case_filters(query, q=q, status=status, archived=archived)
     db_cases = query.all()
-    return [
+    cases = [
         Case(
             id=c.id,
             responsible_person=c.responsible_person,
+            responsible_user_id=c.responsible_user_id,
             status=c.status,
             customer=c.customer,
             company_id=c.company_id,
@@ -171,3 +186,6 @@ async def get_company_cases(
         )
         for c in db_cases
     ]
+    if not is_super:
+        cases = await filter_by_permission(cases, current_user.username)
+    return cases

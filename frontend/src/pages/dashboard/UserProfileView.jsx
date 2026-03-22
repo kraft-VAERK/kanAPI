@@ -10,7 +10,7 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
   const [cases, setCases] = useState([]);
   const [casesPage, setCasesPage] = useState(1);
   const [error, setError] = useState(null);
-  const [deleteState, setDeleteState] = useState(null); // null | 'confirm' | 'deleting'
+  const [deleteState, setDeleteState] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -130,13 +130,15 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
       (form.full_name || null) !== u.full_name ||
       form.is_active !== u.is_active);
 
+  const totalPages = Math.max(1, Math.ceil(cases.length / PAGE_SIZE));
+  const pageSlice = cases.slice((casesPage - 1) * PAGE_SIZE, casesPage * PAGE_SIZE);
+
   return (
     <main className="dashboard-main">
       <div className="section-heading">
         <button className="back-btn" onClick={() => navigate(-1)}>
           ← Back
         </button>
-        <h2>User Profile</h2>
         {u &&
           (deleteState === "confirm" ? (
             <div className="delete-confirm">
@@ -168,21 +170,33 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
         <p className="no-cases">Loading…</p>
       ) : (
         <>
-          <div className="profile-card">
-            <div className="profile-header">
-              <div className="profile-avatar">{initials}</div>
-              <div className="profile-header-info">
-                <span className="profile-header-name">
-                  {u.full_name || u.username}
+          <div className="customer-hero">
+            <div className="customer-hero-avatar">{initials}</div>
+            <h2 className="customer-hero-name">{u.full_name || u.username}</h2>
+            <span className="customer-hero-tag">{role}</span>
+
+            <div className="customer-stats">
+              <div className="customer-stat">
+                <span className="customer-stat-value">{cases.length}</span>
+                <span className="customer-stat-label">Cases</span>
+              </div>
+              <div className="customer-stat">
+                <span className="customer-stat-value">
+                  {u.is_active ? "Active" : "Inactive"}
                 </span>
-                <span className="profile-header-role">{role}</span>
+                <span className="customer-stat-label">Status</span>
               </div>
             </div>
-            <div className="profile-fields">
-              <div className="profile-field">
-                <label>ID</label>
+          </div>
+
+          <div className="customer-info-grid">
+            <div className="customer-info-card">
+              <span className="customer-info-icon">@</span>
+              <div className="customer-info-content">
+                <span className="customer-info-label">Username</span>
                 {viewerIsSuperAdmin ? (
                   <input
+                    className="profile-inline-input"
                     value={form.username}
                     onChange={(e) => {
                       setForm((f) => ({ ...f, username: e.target.value }));
@@ -190,12 +204,16 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
                     }}
                   />
                 ) : (
-                  <div className="profile-field-static">{u.username}</div>
+                  <span className="customer-info-value">{u.username}</span>
                 )}
               </div>
-              <div className="profile-field">
-                <label>Email</label>
+            </div>
+            <div className="customer-info-card">
+              <span className="customer-info-icon">✉</span>
+              <div className="customer-info-content">
+                <span className="customer-info-label">Email</span>
                 <input
+                  className="profile-inline-input"
                   type="email"
                   value={form.email}
                   onChange={(e) => {
@@ -204,9 +222,13 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
                   }}
                 />
               </div>
-              <div className="profile-field">
-                <label>Full name</label>
+            </div>
+            <div className="customer-info-card">
+              <span className="customer-info-icon">☺</span>
+              <div className="customer-info-content">
+                <span className="customer-info-label">Full Name</span>
                 <input
+                  className="profile-inline-input"
                   value={form.full_name}
                   onChange={(e) => {
                     setForm((f) => ({ ...f, full_name: e.target.value }));
@@ -214,16 +236,12 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
                   }}
                 />
               </div>
-              <div className="profile-field">
-                <label>Status</label>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    cursor: "pointer",
-                  }}
-                >
+            </div>
+            <div className="customer-info-card">
+              <span className="customer-info-icon">⏻</span>
+              <div className="customer-info-content">
+                <span className="customer-info-label">Status</span>
+                <label className="profile-inline-toggle">
                   <input
                     type="checkbox"
                     checked={form.is_active}
@@ -236,55 +254,49 @@ export function UserProfileView({ userId, viewerIsSuperAdmin }) {
                 </label>
               </div>
             </div>
-            {(dirty || saveError || saveSuccess) && (
-              <div className="profile-save-row">
-                {dirty && (
-                  <button
-                    className="profile-save-btn"
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
-                    {saving ? "Saving…" : "Save changes"}
-                  </button>
-                )}
-                {saveError && <span className="form-error">{saveError}</span>}
-                {saveSuccess && (
-                  <span className="profile-success">Changes saved.</span>
-                )}
-              </div>
-            )}
           </div>
-          <section className="detail-section">
-            <h3 className="detail-section-title">
-              Cases{" "}
-              {cases.length > 0 && (
-                <span className="detail-count">({cases.length})</span>
+
+          {(dirty || saveError || saveSuccess) && (
+            <div className="profile-save-row">
+              {dirty && (
+                <button
+                  className="profile-save-btn"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
               )}
-            </h3>
-            {cases.length === 0 ? (
-              <p className="no-cases">No cases assigned to this user.</p>
-            ) : (
-              <>
-                <CasesTable
-                  cases={cases.slice(
-                    (casesPage - 1) * PAGE_SIZE,
-                    casesPage * PAGE_SIZE,
-                  )}
-                  onCaseClick={(c) =>
-                    navigate(`/case/${c.id}`, { state: { case: c } })
-                  }
-                />
-                <Pagination
-                  page={casesPage}
-                  totalPages={Math.max(
-                    1,
-                    Math.ceil(cases.length / PAGE_SIZE),
-                  )}
-                  setPage={setCasesPage}
-                />
-              </>
-            )}
-          </section>
+              {saveError && <span className="form-error">{saveError}</span>}
+              {saveSuccess && (
+                <span className="profile-success">Changes saved.</span>
+              )}
+            </div>
+          )}
+
+          <div className="tabs" style={{ marginTop: "1.5rem" }}>
+            <button className="tab active">
+              Cases{cases.length > 0 ? ` (${cases.length})` : ""}
+            </button>
+          </div>
+
+          {cases.length === 0 ? (
+            <p className="no-cases">No cases assigned to this user.</p>
+          ) : (
+            <>
+              <CasesTable
+                cases={pageSlice}
+                onCaseClick={(c) =>
+                  navigate(`/case/${c.id}`, { state: { case: c } })
+                }
+              />
+              <Pagination
+                page={casesPage}
+                totalPages={totalPages}
+                setPage={setCasesPage}
+              />
+            </>
+          )}
         </>
       )}
     </main>
