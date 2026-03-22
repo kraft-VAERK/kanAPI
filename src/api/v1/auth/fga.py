@@ -16,6 +16,7 @@ from openfga_sdk.client.models import (
     ClientTuple,
     ClientWriteRequest,
 )
+from openfga_sdk.credentials import CredentialConfiguration, Credentials
 from openfga_sdk.exceptions import FgaValidationException, ValidationException
 
 from src.api.v1.auth.auth import get_current_user_from_cookie
@@ -37,10 +38,18 @@ async def get_fga_client() -> OpenFgaClient:
         model_id = os.environ.get("FGA_MODEL_ID")
         if not store_id or not model_id:
             logger.warning("FGA_STORE_ID or FGA_MODEL_ID not set — authorization checks may fail")
+        preshared_key = os.environ.get("FGA_PRESHARED_KEY", "")
+        credentials = None
+        if preshared_key:
+            credentials = Credentials(
+                method='api_token',
+                configuration=CredentialConfiguration(api_token=preshared_key),
+            )
         config = ClientConfiguration(
             api_url=os.environ.get("FGA_API_URL", "http://localhost:8080"),
             store_id=store_id,
             authorization_model_id=model_id,
+            credentials=credentials,
         )
         _fga_client = OpenFgaClient(config)
     return _fga_client

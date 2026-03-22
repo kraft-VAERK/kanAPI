@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./data:/var/lib/postgresql
     networks:
@@ -21,8 +21,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
     networks:
@@ -35,8 +35,6 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: openfga
-    ports:
-      - "5433:5432"
     networks:
       - project_network
     healthcheck:
@@ -65,11 +63,12 @@ services:
       openfga-migrate:
         condition: service_completed_successfully
     ports:
-      - "8080:8080"
-      - "3000:3000"
+      - "127.0.0.1:8080:8080"
     environment:
       OPENFGA_DATASTORE_ENGINE: postgres
       OPENFGA_DATASTORE_URI: "postgres://postgres:password@openfga-db:5432/openfga?sslmode=disable"
+      OPENFGA_AUTHN_METHOD: preshared
+      OPENFGA_AUTHN_PRESHARED_KEYS: "${FGA_PRESHARED_KEY:-kanapi-fga-secret-change-me}"
     command: run
     networks:
       - project_network

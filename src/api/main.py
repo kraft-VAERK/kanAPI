@@ -19,6 +19,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
 from .db.database import create_tables  # noqa: E402
 from .health.health import router as health_router  # noqa: E402
 from .middleware.audit import AuditMiddleware  # noqa: E402
+from .middleware.security import SecurityHeadersMiddleware  # noqa: E402
 from .v1.auth.auth import limiter  # noqa: E402
 from .v1.auth.auth import router as auth_v1_router  # noqa: E402
 from .v1.auth.fga import close_fga_client  # noqa: E402
@@ -48,6 +49,7 @@ app = FastAPI(title="kanAPI", description="API for managing cases", lifespan=lif
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(AuditMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 _cors_origins = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localhost:5173').split(',') if o.strip()]
 app.add_middleware(

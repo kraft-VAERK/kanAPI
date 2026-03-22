@@ -5,6 +5,8 @@ export function CaseSearchBar({
   onStatusChange,
   archived,
   onArchivedChange,
+  responsible,
+  onResponsibleChange,
 }) {
   return (
     <div className="search-bar">
@@ -29,6 +31,14 @@ export function CaseSearchBar({
         <option value="false">Active</option>
         <option value="true">Archived</option>
       </select>
+      {onResponsibleChange && (
+        <button
+          className={`toggle-btn${responsible ? " active" : ""}`}
+          onClick={() => onResponsibleChange(!responsible)}
+        >
+          Responsible
+        </button>
+      )}
     </div>
   );
 }

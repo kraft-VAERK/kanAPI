@@ -1,12 +1,13 @@
 """Module defines the data models for the case management system."""
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 import pydantic
 from fastapi import HTTPException
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, field_validator
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, or_
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.exc import SQLAlchemyError
@@ -42,6 +43,14 @@ class DocumentInfo(pydantic.BaseModel):
     last_modified: datetime
 
 
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+
+def _strip_html(v: str) -> str:
+    """Remove HTML tags from a string to prevent stored XSS."""
+    return _HTML_TAG_RE.sub('', v)
+
+
 class CaseCreate(pydantic.BaseModel):
     """Model for creating a new case."""
 
@@ -50,6 +59,12 @@ class CaseCreate(pydantic.BaseModel):
     status: Literal['open', 'pending', 'in_progress', 'closed']
     customer: str = Field(max_length=255)
     company_id: str
+
+    @field_validator('responsible_person', 'customer', mode='after')
+    @classmethod
+    def sanitize_html(cls, v: str) -> str:
+        """Strip HTML tags to prevent stored XSS."""
+        return _strip_html(v)
 
 
 class CaseUpdate(pydantic.BaseModel):
@@ -60,6 +75,12 @@ class CaseUpdate(pydantic.BaseModel):
     customer: Optional[str] = Field(default=None, max_length=255)
     archived: Optional[bool] = None
     updated_at: Optional[datetime] = None
+
+    @field_validator('responsible_person', 'customer', mode='after')
+    @classmethod
+    def sanitize_html(cls, v: Optional[str]) -> Optional[str]:
+        """Strip HTML tags to prevent stored XSS."""
+        return _strip_html(v) if v is not None else None
 
 
 class CaseDelete(pydantic.BaseModel):

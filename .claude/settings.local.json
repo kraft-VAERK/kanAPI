@@ -88,7 +88,12 @@
       "Bash(rtk docker:*)",
       "Bash(rtk uv:*)",
       "Bash(printf 'y\\\\nq\\\\n')",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(echo $?)",
+      "Bash(pg_isready -h localhost -p 5433)",
+      "Bash(python3 -c \"from openfga_sdk.client import ClientConfiguration; help\\(ClientConfiguration.__init__\\)\")",
+      "Bash(openssl rand:*)"
     ]
   }
 }

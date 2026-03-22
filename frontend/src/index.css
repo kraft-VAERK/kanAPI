@@ -260,6 +260,11 @@ body {
 
 .dashboard-header span { font-weight: 600; }
 
+.header-name {
+  cursor: pointer;
+  user-select: none;
+}
+
 .dashboard-header button { color: var(--text); }
 
 /* Theme toggle */

@@ -18,7 +18,7 @@ from src.api.v1.company.models import (
     db_get_client_companies,
     db_get_companies,
 )
-from src.api.v1.user.models import User, UserDB
+from src.api.v1.user.models import User, UserDB, UserPublic
 
 router = APIRouter(prefix='/company', tags=['company'])
 
@@ -67,7 +67,7 @@ async def delete_company(company_id: str, current_user: CurrentUser, db: DbSessi
         raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='Company not found.')
 
 
-@router.get('/my-users', response_model=list[User], status_code=http.HTTPStatus.OK)
+@router.get('/my-users', response_model=list[UserPublic], status_code=http.HTTPStatus.OK)
 async def get_my_users(current_user: CurrentUser, db: DbSession) -> list[User]:
     """Return all sub-users belonging to the current company admin."""
     _require_company_admin(current_user)
@@ -132,7 +132,7 @@ async def get_client_companies(company_id: str, current_user: CurrentUser, db: D
     return db_get_client_companies(db=db, owner_id=company_id)
 
 
-@router.get('/{company_id}/users', response_model=list[User], status_code=http.HTTPStatus.OK)
+@router.get('/{company_id}/users', response_model=list[UserPublic], status_code=http.HTTPStatus.OK)
 async def get_company_users(company_id: str, current_user: CurrentUser, db: DbSession) -> list[User]:
     """Return all sub-users belonging to a company (user-based admin accounts)."""
     _require_super_admin(current_user)

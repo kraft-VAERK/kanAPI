@@ -23,6 +23,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv, set_key
 from openfga_sdk.client import ClientConfiguration, OpenFgaClient
+from openfga_sdk.credentials import CredentialConfiguration, Credentials
 from openfga_sdk.models.create_store_request import CreateStoreRequest
 
 from src.api.db.seed_fga import CASE_AUTH_MODEL
@@ -86,9 +87,16 @@ async def bootstrap() -> None:
 
     api_url = os.environ.get('FGA_API_URL', 'http://localhost:8080')
     store_id = os.environ.get('FGA_STORE_ID', '')
+    preshared_key = os.environ.get('FGA_PRESHARED_KEY', '')
 
     # ── 1. Resolve or create store ──────────────────────────────────────
-    config = ClientConfiguration(api_url=api_url)
+    credentials = None
+    if preshared_key:
+        credentials = Credentials(
+            method='api_token',
+            configuration=CredentialConfiguration(api_token=preshared_key),
+        )
+    config = ClientConfiguration(api_url=api_url, credentials=credentials)
     if store_id:
         config.store_id = store_id
 

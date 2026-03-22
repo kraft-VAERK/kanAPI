@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
 
-from .models import User, UserCreate, UserDB, UserUpdate, db_create_user, db_delete_user, db_update_user
+from .models import User, UserCreate, UserDB, UserPublic, UserUpdate, db_create_user, db_delete_user, db_update_user
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -22,7 +22,7 @@ async def get_user_from_cookie(
     return await get_current_user_from_cookie(db=db, session=session)
 
 
-@router.post("/create", response_model=User)
+@router.post("/create", response_model=UserPublic)
 async def create_user(
     user: UserCreate,
     current_user: Annotated[User, Depends(get_user_from_cookie)],
@@ -74,7 +74,7 @@ async def delete_user(
         ) from e
 
 
-@router.patch("/{user_id}", response_model=User)
+@router.patch("/{user_id}", response_model=UserPublic)
 async def update_user(
     user_id: str,
     user_update: UserUpdate,
@@ -98,7 +98,7 @@ async def update_user(
     return result
 
 
-@router.get("/all", response_model=List[User])
+@router.get("/all", response_model=List[UserPublic])
 async def get_all_users(
     _current_user: Annotated[User, Depends(get_user_from_cookie)],
     db: Session = Depends(get_db),  # noqa: B008
@@ -178,7 +178,7 @@ async def get_user_cases(
     return db_get_cases_by_responsible_user(db=db, user_id=user_id)
 
 
-@router.get("/{user_id}", response_model=User)
+@router.get("/{user_id}", response_model=UserPublic)
 async def get_user(
     user_id: str,
     current_user: Annotated[User, Depends(get_user_from_cookie)],

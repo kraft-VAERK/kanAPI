@@ -70,7 +70,7 @@ export default function Dashboard() {
 
   const header = (
     <header className="dashboard-header">
-      <span>{user.username}</span>
+      <span className="header-name" onClick={() => navigate("/dashboard/profile")}>{user.full_name || user.username}</span>
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
         {toast && <span className="toast-success">{toast}</span>}
         <button className="theme-toggle" onClick={toggleTheme} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>

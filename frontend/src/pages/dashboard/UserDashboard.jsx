@@ -93,12 +93,6 @@ export function UserDashboard({ user }) {
         <>
           <div className="section-heading">
             <h2>Cases</h2>
-            <button
-              className={`toggle-btn${myResponsible ? " active" : ""}`}
-              onClick={() => { setMyResponsible((v) => !v); setPage(1); }}
-            >
-              Responsible
-            </button>
           </div>
           <CaseSearchBar
             q={searchQ}
@@ -107,6 +101,8 @@ export function UserDashboard({ user }) {
             onStatusChange={setSearchStatus}
             archived={searchArchived}
             onArchivedChange={setSearchArchived}
+            responsible={myResponsible}
+            onResponsibleChange={(v) => { setMyResponsible(v); setPage(1); }}
           />
           {cases.length === 0 ? (
             <p className="no-cases">No cases found.</p>
@@ -171,6 +167,16 @@ export function UserDashboard({ user }) {
               + New Case
             </button>
           </div>
+          <CaseSearchBar
+            q={searchQ}
+            onQChange={setSearchQ}
+            status={searchStatus}
+            onStatusChange={setSearchStatus}
+            archived={searchArchived}
+            onArchivedChange={setSearchArchived}
+            responsible={myResponsible}
+            onResponsibleChange={(v) => { setMyResponsible(v); setPage(1); }}
+          />
           {activeCases.length === 0 ? (
             <p className="no-cases">No cases for this customer.</p>
           ) : (

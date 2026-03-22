@@ -18,7 +18,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
-from src.api.v1.user.models import User, UserDB
+from src.api.v1.user.models import User, UserDB, UserPublic
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,7 @@ async def logout(response: Response) -> dict:
     return {"message": "Logout successful"}
 
 
-@router.get("/me", response_model=User)
+@router.get("/me", response_model=UserPublic)
 async def read_users_me(
     current_user: Annotated[User, Depends(get_current_user_from_cookie)],
 ) -> User:

@@ -29,8 +29,27 @@ class UserDB(Base):
     parent_id = Column(String, ForeignKey('users.username', ondelete='CASCADE', onupdate='CASCADE'), nullable=True)
 
 
+class UserPublic(pydantic.BaseModel):
+    """Pydantic model for User API responses — never exposes password hash."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    username: str
+    email: str
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = True
+    is_admin: Optional[bool] = False
+    parent_id: Optional[str] = None
+
+    @field_validator('parent_id', mode='before')
+    @classmethod
+    def coerce_parent_id(cls, v: object) -> Optional[str]:
+        """Convert UUID objects to str (handles old DB schema during migration)."""
+        return str(v) if v is not None else None
+
+
 class User(pydantic.BaseModel):
-    """Pydantic model for User."""
+    """Pydantic model for User (internal use — includes password for auth logic)."""
 
     model_config = ConfigDict(from_attributes=True)
 
