@@ -73,6 +73,21 @@ services:
     networks:
       - project_network
 
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "127.0.0.1:8888:8888"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - minio
+      - openfga
+    networks:
+      - project_network
+
 volumes:
   data:
     driver: local

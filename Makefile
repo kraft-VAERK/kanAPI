@@ -64,12 +64,12 @@ docker-all:
 
 db:
 	@echo "Setting up database services..."
-	@docker compose up -d
 	@mkdir -p logs
-	@for svc in postgres minio openfga-db openfga; do \
+	@docker compose up -d
+	@for svc in postgres minio openfga-db openfga nginx-proxy; do \
 		docker logs -f $$svc > logs/$$svc.log 2>&1 & \
 	done
-	@echo "  Logs: logs/postgres.log  logs/minio.log  logs/openfga-db.log  logs/openfga.log"
+	@echo "  Logs: logs/postgres.log  logs/minio.log  logs/openfga-db.log  logs/openfga.log  logs/nginx-proxy.log"
 
 seed:
 	@echo "Seeding database..."
