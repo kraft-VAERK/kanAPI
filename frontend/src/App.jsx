@@ -25,6 +25,7 @@ export default function App() {
         <Route path='/dashboard/customers/:customer' element={<Dashboard />} />
         <Route path='/dashboard/users' element={<Dashboard />} />
         <Route path='/dashboard/profile' element={<Dashboard />} />
+        <Route path='/dashboard/audit' element={<Dashboard />} />
         <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
     </BrowserRouter>

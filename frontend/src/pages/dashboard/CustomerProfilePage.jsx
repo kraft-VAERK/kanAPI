@@ -14,8 +14,6 @@ export function CustomerProfilePage({ companyId, user }) {
   const [company, setCompany] = useState(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const [allCases, setAllCases] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [tab, setTab] = useState("cases");
   const [page, setPage] = useState(1);
 
   const [searchQ, setSearchQ] = useState("");
@@ -38,16 +36,17 @@ export function CustomerProfilePage({ companyId, user }) {
       });
   }, [companyId]);
 
-  // Fetch cases
+  // Fetch cases — company admins use my-cases so all client companies are included
   function fetchCases(q, status, archived) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (status) params.set("status", status);
     if (archived !== "") params.set("archived", archived);
     const qs = params.toString();
-    fetch(`${API}/company/${companyId}/cases${qs ? `?${qs}` : ""}`, {
-      credentials: "include",
-    })
+    const url = isSuperAdmin
+      ? `${API}/company/${companyId}/cases${qs ? `?${qs}` : ""}`
+      : `${API}/company/my-cases${qs ? `?${qs}` : ""}`;
+    fetch(url, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setAllCases);
   }
@@ -56,31 +55,18 @@ export function CustomerProfilePage({ companyId, user }) {
     fetchCases(debouncedQ, searchStatus, searchArchived);
   }, [companyId, debouncedQ, searchStatus, searchArchived]);
 
-  // Fetch users (admin only)
-  const isAdmin = user?.is_admin;
   const isSuperAdmin = user?.is_admin && !user?.parent_id;
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    const url = isSuperAdmin
-      ? `${API}/company/${companyId}/users`
-      : `${API}/company/my-users`;
-    fetch(url, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setUsers);
-  }, [companyId, isAdmin, isSuperAdmin]);
 
   // Reset page on filter change
   useEffect(() => {
     setPage(1);
-  }, [tab, debouncedQ, searchStatus, searchArchived]);
+  }, [debouncedQ, searchStatus, searchArchived]);
 
   const cases = customerName
     ? allCases.filter((c) => c.customer === customerName)
     : allCases;
-  const visibleItems = tab === "users" ? users : cases;
-  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
-  const pageSlice = visibleItems.slice(
+  const totalPages = Math.max(1, Math.ceil(cases.length / PAGE_SIZE));
+  const pageSlice = cases.slice(
     (page - 1) * PAGE_SIZE,
     page * PAGE_SIZE,
   );
@@ -128,12 +114,6 @@ export function CustomerProfilePage({ companyId, user }) {
             <span className="customer-stat-value">{cases.length}</span>
             <span className="customer-stat-label">Cases</span>
           </div>
-          {isAdmin && (
-            <div className="customer-stat">
-              <span className="customer-stat-value">{users.length}</span>
-              <span className="customer-stat-label">Users</span>
-            </div>
-          )}
           <div className="customer-stat">
             <span className="customer-stat-value">
               {company.created_at
@@ -157,26 +137,8 @@ export function CustomerProfilePage({ companyId, user }) {
         <InfoCard icon="⚑" label="Address" value={company.address} />
       </div>
 
-      <div className="tabs" style={{ marginTop: "1.5rem" }}>
-        <button
-          className={`tab${tab === "cases" ? " active" : ""}`}
-          onClick={() => setTab("cases")}
-        >
-          Cases{cases.length > 0 ? ` (${cases.length})` : ""}
-        </button>
-        {isAdmin && (
-          <button
-            className={`tab${tab === "users" ? " active" : ""}`}
-            onClick={() => setTab("users")}
-          >
-            Users{users.length > 0 ? ` (${users.length})` : ""}
-          </button>
-        )}
-      </div>
-
-      {tab === "cases" && (
-        <>
-          <CaseSearchBar
+      <div style={{ marginTop: "1.5rem" }}>
+        <CaseSearchBar
             q={searchQ}
             onQChange={setSearchQ}
             status={searchStatus}
@@ -184,70 +146,25 @@ export function CustomerProfilePage({ companyId, user }) {
             archived={searchArchived}
             onArchivedChange={setSearchArchived}
           />
-          {cases.length === 0 ? (
-            <p className="no-cases">No cases for this customer.</p>
-          ) : (
-            <>
-              <CasesTable
-                cases={pageSlice}
-                onCaseClick={(c) =>
-                  navigate(`/case/${c.id}`, { state: { case: c } })
-                }
-              />
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                setPage={setPage}
-              />
-            </>
-          )}
-        </>
-      )}
+        {cases.length === 0 ? (
+          <p className="no-cases">No cases for this customer.</p>
+        ) : (
+          <>
+            <CasesTable
+              cases={pageSlice}
+              onCaseClick={(c) =>
+                navigate(`/case/${c.id}`, { state: { case: c } })
+              }
+            />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              setPage={setPage}
+            />
+          </>
+        )}
+      </div>
 
-      {tab === "users" && isAdmin && (
-        <>
-          {users.length === 0 ? (
-            <p className="no-cases">No users found.</p>
-          ) : (
-            <>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageSlice.map((u) => (
-                    <tr key={u.username}>
-                      <td>{u.full_name || "\u2014"}</td>
-                      <td>
-                        <button
-                          className="link-btn"
-                          onClick={() =>
-                            navigate(`/user/${u.username}`, {
-                              state: { user: u },
-                            })
-                          }
-                        >
-                          {u.username}
-                        </button>
-                      </td>
-                      <td>{u.email}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                setPage={setPage}
-              />
-            </>
-          )}
-        </>
-      )}
     </main>
   );
 }

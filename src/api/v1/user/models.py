@@ -1,14 +1,16 @@
 """SQLAlchemy ORM model for User table."""
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
 from fastapi import HTTPException
 from pydantic import ConfigDict, EmailStr, Field, field_validator
-from sqlalchemy import Boolean, Column, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from uuid_extensions import uuid7
 
 from src.api.db.database import Base
 
@@ -26,7 +28,35 @@ class UserDB(Base):
     password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False, nullable=False)
-    parent_id = Column(String, ForeignKey('users.username', ondelete='CASCADE', onupdate='CASCADE'), nullable=True)
+    parent_id = Column(String, ForeignKey("users.username", ondelete="CASCADE", onupdate="CASCADE"), nullable=True)
+
+
+class UserChangelogDB(Base):
+    """Tracks field-level changes made to user profiles."""
+
+    __tablename__ = "user_changelog"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid7()))
+    target_user = Column(String, ForeignKey("users.username", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    changed_by = Column(String, ForeignKey("users.username", ondelete="SET NULL", onupdate="CASCADE"), nullable=True)
+    field = Column(String, nullable=False)
+    old_value = Column(String, nullable=True)
+    new_value = Column(String, nullable=True)
+    changed_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class UserChangelog(pydantic.BaseModel):
+    """Pydantic model for a single user changelog entry."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    target_user: str
+    changed_by: Optional[str] = None
+    field: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_at: datetime
 
 
 class UserPublic(pydantic.BaseModel):
@@ -41,7 +71,7 @@ class UserPublic(pydantic.BaseModel):
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
 
-    @field_validator('parent_id', mode='before')
+    @field_validator("parent_id", mode="before")
     @classmethod
     def coerce_parent_id(cls, v: object) -> Optional[str]:
         """Convert UUID objects to str (handles old DB schema during migration)."""
@@ -61,7 +91,7 @@ class User(pydantic.BaseModel):
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
 
-    @field_validator('parent_id', mode='before')
+    @field_validator("parent_id", mode="before")
     @classmethod
     def coerce_parent_id(cls, v: object) -> Optional[str]:
         """Convert UUID objects to str (handles old DB schema during migration)."""
@@ -123,13 +153,54 @@ class UserUpdate(pydantic.BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    username: Optional[str] = None
     email: Optional[str] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
     is_active: Optional[bool] = None
     is_admin: Optional[bool] = None
     parent_id: Optional[str] = None
+
+
+def db_log_user_changes(
+    db: Session,
+    target_user: str,
+    changed_by: str,
+    before: "UserDB",
+    updates: dict,
+) -> None:
+    """Write one changelog row per changed field."""
+    _SENSITIVE = {"password"}  # noqa
+    for field, new_val in updates.items():
+        old_val = getattr(before, field, None)
+        if field in _SENSITIVE:
+            old_val = "***"
+            new_val = "***"
+        else:
+            old_val = str(old_val) if old_val is not None else None
+            new_val = str(new_val) if new_val is not None else None
+        if old_val == new_val:
+            continue
+        db.add(
+            UserChangelogDB(
+                target_user=target_user,
+                changed_by=changed_by,
+                field=field,
+                old_value=old_val,
+                new_value=new_val,
+                changed_at=datetime.now(timezone.utc),
+            ),
+        )
+
+
+def db_get_user_changelog(db: Session, username: str) -> list["UserChangelog"]:
+    """Return changelog entries for a user, newest first."""
+    rows = (
+        db.query(UserChangelogDB)
+        .filter(UserChangelogDB.target_user == username)
+        .order_by(UserChangelogDB.changed_at.desc())
+        .all()
+    )
+    return [UserChangelog.model_validate(r) for r in rows]
 
 
 def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optional["User"]:
@@ -140,8 +211,8 @@ def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optio
             return None
 
         updates = user_update.model_dump(exclude_none=True)
-        if 'password' in updates:
-            updates['password'] = User.hash_password(User, updates['password'])
+        if "password" in updates:
+            updates["password"] = User.hash_password(User, updates["password"])
 
         for field, value in updates.items():
             setattr(user_db, field, value)
@@ -158,15 +229,17 @@ def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optio
 def db_create_user(db: Session, user_create: UserCreate) -> "User":
     """Create a new user in the database."""
     import re
+
     try:
         if user_create.username:
             username = user_create.username
         else:
-            base = re.sub(r'[^a-z0-9.]', '.', user_create.email.split('@')[0].lower())
-            base = re.sub(r'\.+', '.', base).strip('.')
+            base = re.sub(r"[^a-z0-9.]", ".", user_create.email.split("@")[0].lower())
+            base = re.sub(r"\.+", ".", base).strip(".")
             # append short suffix to avoid collisions
             from uuid_extensions import uuid7
-            username = f'{base}.{str(uuid7()).replace("-", "")[-4:]}'
+
+            username = f"{base}.{str(uuid7()).replace('-', '')[-4:]}"
         user_db = UserDB(
             username=username,
             email=user_create.email,

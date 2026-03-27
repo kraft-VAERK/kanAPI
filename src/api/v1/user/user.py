@@ -7,7 +7,19 @@ from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
 
-from .models import User, UserCreate, UserDB, UserPublic, UserUpdate, db_create_user, db_delete_user, db_update_user
+from .models import (
+    User,
+    UserChangelog,
+    UserCreate,
+    UserDB,
+    UserPublic,
+    UserUpdate,
+    db_create_user,
+    db_delete_user,
+    db_get_user_changelog,
+    db_log_user_changes,
+    db_update_user,
+)
 
 router = APIRouter(prefix="/user", tags=["User"])
 
@@ -91,7 +103,14 @@ async def update_user(
             target = db.query(UserDB).filter(UserDB.username == user_id).first()
             if not target or target.parent_id != current_user.username:
                 raise HTTPException(status_code=403, detail='You can only update users you manage.')
-        user_update.username = None  # only super admin can change username
+
+    before = db.query(UserDB).filter(UserDB.username == user_id).first()
+    if not before:
+        raise HTTPException(status_code=404, detail='User not found.')
+
+    updates = user_update.model_dump(exclude_none=True)
+    db_log_user_changes(db=db, target_user=user_id, changed_by=current_user.username, before=before, updates=updates)
+
     result = db_update_user(db=db, username=user_id, user_update=user_update)
     if not result:
         raise HTTPException(status_code=404, detail='User not found.')
@@ -176,6 +195,19 @@ async def get_user_cases(
     from src.api.v1.case.models import db_get_cases_by_responsible_user  # local import to avoid circular dependency
 
     return db_get_cases_by_responsible_user(db=db, user_id=user_id)
+
+
+@router.get("/{user_id}/changelog", response_model=list[UserChangelog])
+async def get_user_changelog(
+    user_id: str,
+    current_user: Annotated[User, Depends(get_user_from_cookie)],
+    db: Session = Depends(get_db),  # noqa: B008
+) -> list[UserChangelog]:
+    """Return field-level changelog for a user. Super admin only."""
+    is_super_admin = current_user.is_admin and not current_user.parent_id
+    if not is_super_admin:
+        raise HTTPException(status_code=403, detail='Super admin access required.')
+    return db_get_user_changelog(db=db, username=user_id)
 
 
 @router.get("/{user_id}", response_model=UserPublic)

@@ -6,6 +6,7 @@ import { CaseDetailPage } from "./dashboard/CaseDetailPage";
 import { CompanyAdminDashboard } from "./dashboard/CompanyAdminDashboard";
 import { ProfileView } from "./dashboard/ProfileView";
 import { SuperAdminDashboard } from "./dashboard/SuperAdminDashboard";
+import { AuditLogView } from "./dashboard/AuditLogView";
 import { CustomerProfilePage } from "./dashboard/CustomerProfilePage";
 import { UserDashboard } from "./dashboard/UserDashboard";
 import { UserProfileView } from "./dashboard/UserProfileView";
@@ -68,6 +69,7 @@ export default function Dashboard() {
   const isSuperAdmin = user.is_admin && !user.parent_id;
   const isCompanyAdmin = user.is_admin && !!user.parent_id;
   const isProfilePage = location.pathname === "/dashboard/profile";
+  const isAuditPage = location.pathname === "/dashboard/audit";
 
   const header = (
     <header className="dashboard-header">
@@ -110,6 +112,14 @@ export default function Dashboard() {
       <>
         {header}
         <CustomerProfilePage companyId={companyId} user={user} />
+      </>
+    );
+
+  if (isAuditPage && isSuperAdmin)
+    return (
+      <>
+        {header}
+        <AuditLogView />
       </>
     );
 

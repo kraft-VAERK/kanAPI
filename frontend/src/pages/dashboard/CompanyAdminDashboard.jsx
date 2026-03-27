@@ -62,9 +62,8 @@ export function CompanyAdminDashboard({ user }) {
 
   const customerMap = {};
   for (const c of cases) {
-    const key = `${c.customer}\0${c.company_id}`;
-    if (!customerMap[key]) customerMap[key] = { name: c.customer, count: 0, company_id: c.company_id };
-    customerMap[key].count += 1;
+    if (!customerMap[c.customer]) customerMap[c.customer] = { name: c.customer, count: 0 };
+    customerMap[c.customer].count += 1;
   }
   const customers = Object.values(customerMap);
 
@@ -134,9 +133,10 @@ export function CompanyAdminDashboard({ user }) {
                 onCaseClick={(c) =>
                   navigate(`/case/${c.id}`, { state: { case: c } })
                 }
-                onCustomerClick={(name, cId) =>
-                  navigate(`/customer/${cId}`, { state: { customerName: name } })
-                }
+                onCustomerClick={(name) => {
+                  const cId = cases.find((c) => c.customer === name)?.company_id;
+                  if (cId) navigate(`/customer/${cId}`, { state: { customerName: name } });
+                }}
               />
               <Pagination
                 page={page}
@@ -168,9 +168,10 @@ export function CompanyAdminDashboard({ user }) {
             <>
               <CustomersTable
                 customers={pageSlice}
-                onSelect={(name, cId) =>
-                  navigate(`/customer/${cId}`, { state: { customerName: name } })
-                }
+                onSelect={(name) => {
+                  const cId = cases.find((c) => c.customer === name)?.company_id;
+                  if (cId) navigate(`/customer/${cId}`, { state: { customerName: name } });
+                }}
               />
               <Pagination
                 page={page}

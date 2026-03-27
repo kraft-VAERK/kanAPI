@@ -64,20 +64,9 @@ def scenario(db):  # noqa ANN001
 # ─── db_update_user ───────────────────────────────────────────────────────────
 
 
-def test_db_update_user_changes_username(scenario):  # noqa ANN001
-    """db_update_user applies partial updates to an existing user."""
-    s = scenario
-    target = s["regular_user"]
-    result = db_update_user(s["db"], target.username, UserUpdate(username="new_username"))
-    assert result is not None
-    assert result.username == "new_username"
-    # unchanged fields stay the same
-    assert result.email == target.email
-
-
 def test_db_update_user_returns_none_for_missing_id(scenario):  # noqa ANN001
     """db_update_user returns None when the username does not exist."""
-    result = db_update_user(scenario["db"], "nonexistent_user", UserUpdate(username="ghost"))
+    result = db_update_user(scenario["db"], "nonexistent_user", UserUpdate(email="ghost@test.dev"))
     assert result is None
 
 
@@ -182,34 +171,6 @@ async def test_delete_user_with_cases_gets_409(scenario, db):  # noqa ANN001
     assert exc.value.status_code == http.HTTPStatus.CONFLICT
 
 
-# ─── update_user (username change guard) ──────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_super_admin_can_change_username(scenario) -> None:  # noqa: ANN001
-    """Super admin can rename any user."""
-    s = scenario
-    caller = _as_user(s["super_admin"])
-    target = s["regular_user"]
-
-    result = await update_user(target.username, UserUpdate(username="renamed_user"), caller, s["db"])
-
-    assert result.username == "renamed_user"
-
-
-@pytest.mark.asyncio
-async def test_company_admin_cannot_change_username(scenario) -> None:  # noqa: ANN001
-    """Company admin PATCH succeeds but the username field is silently ignored."""
-    s = scenario
-    caller = _as_user(s["company_admin"])
-    target = s["regular_user"]
-    original_username = target.username
-
-    result = await update_user(target.username, UserUpdate(username="hacked_name"), caller, s["db"])
-
-    assert result.username == original_username
-
-
 @pytest.mark.asyncio
 async def test_regular_user_cannot_update_user(scenario) -> None:  # noqa: ANN001
     """A non-admin user gets 403 when attempting any update."""
@@ -217,7 +178,7 @@ async def test_regular_user_cannot_update_user(scenario) -> None:  # noqa: ANN00
     caller = _as_user(s["regular_user"])
 
     with pytest.raises(HTTPException) as exc:
-        await update_user(s["company_admin"].username, UserUpdate(username="hacked_name"), caller, s["db"])
+        await update_user(s["company_admin"].username, UserUpdate(email="hacked@test.dev"), caller, s["db"])
     assert exc.value.status_code == http.HTTPStatus.FORBIDDEN
 
 

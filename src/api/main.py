@@ -20,6 +20,7 @@ from .db.database import create_tables  # noqa: E402
 from .health.health import router as health_router  # noqa: E402
 from .middleware.audit import AuditMiddleware  # noqa: E402
 from .middleware.security import SecurityHeadersMiddleware  # noqa: E402
+from .v1.audit import audit_router as audit_v1_router  # noqa: E402
 from .v1.auth.auth import limiter  # noqa: E402
 from .v1.auth.auth import router as auth_v1_router  # noqa: E402
 from .v1.auth.fga import close_fga_client  # noqa: E402
@@ -30,6 +31,7 @@ from .v1.company import router as company_v1_router  # noqa: E402
 from .v1.company.models import CompanyDB  # noqa: E402, F401
 from .v1.customer import router as customer_v1_rounter  # noqa: E402
 from .v1.user import router as user_v1_router  # noqa: E402
+from .v1.user.models import UserChangelogDB  # noqa: E402, F401
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -69,4 +71,5 @@ app.include_router(case_v1_router, prefix=prefix, tags=["v1", "case"])
 app.include_router(company_v1_router, prefix=prefix, tags=["v1", "company"])
 app.include_router(customer_v1_rounter, prefix=prefix, tags=["v1", "customer"])
 app.include_router(user_v1_router, prefix=prefix, tags=["v1", "user"])
+app.include_router(audit_v1_router, prefix=prefix, tags=["v1", "audit"])
 app.get("/api", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})

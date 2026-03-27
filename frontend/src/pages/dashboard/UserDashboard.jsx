@@ -52,9 +52,8 @@ export function UserDashboard({ user }) {
 
   const customerMap = {};
   for (const c of cases) {
-    const key = `${c.customer}\0${c.company_id}`;
-    if (!customerMap[key]) customerMap[key] = { name: c.customer, count: 0, company_id: c.company_id };
-    customerMap[key].count += 1;
+    if (!customerMap[c.customer]) customerMap[c.customer] = { name: c.customer, count: 0 };
+    customerMap[c.customer].count += 1;
   }
   const customers = Object.values(customerMap);
 

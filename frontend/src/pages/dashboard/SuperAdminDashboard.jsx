@@ -33,6 +33,7 @@ function CompaniesListView() {
   const [showCreate, setShowCreate] = useState(false);
   const navigate = useNavigate();
 
+
   function load() {
     fetch(`${API}/company/`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
@@ -49,6 +50,9 @@ function CompaniesListView() {
     <main className="dashboard-main">
       <div className="section-heading">
         <h2>Companies</h2>
+        <button className="btn" onClick={() => navigate("/dashboard/audit")}>
+          Audit Log
+        </button>
         <button className="create-btn" onClick={() => setShowCreate(true)}>
           + Add Company
         </button>
