@@ -41,6 +41,7 @@ class DocumentInfo(pydantic.BaseModel):
     name: str
     size: int
     last_modified: datetime
+    has_markdown: bool = False
 
 
 _HTML_TAG_RE = re.compile(r'<[^>]+>')
@@ -456,3 +457,67 @@ def db_get_case_activities(db: Session, case_id: str) -> list[CaseActivity]:
         .all()
     )
     return [CaseActivity.model_validate(r) for r in rows]
+
+
+# ─── Case documents ─────────────────────────────────────────────────────────────
+
+
+class CaseDocumentDB(Base):
+    """SQLAlchemy ORM model for uploaded case documents."""
+
+    __tablename__ = 'case_documents'
+
+    id = Column(UUID(as_uuid=False), primary_key=True, index=True)
+    case_id = Column(UUID(as_uuid=False), ForeignKey('cases.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = Column(String, ForeignKey('users.username', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+    original_filename = Column(String, nullable=False)
+    minio_path = Column(String, nullable=False)
+    md_minio_path = Column(String, nullable=True)
+    conversion_status = Column(String, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class CaseDocument(pydantic.BaseModel):
+    """Pydantic model for an uploaded case document record."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    user_id: Optional[str] = None
+    original_filename: str
+    minio_path: str
+    md_minio_path: Optional[str] = None
+    conversion_status: str
+    uploaded_at: datetime
+
+
+def db_create_case_document(
+    db: Session,
+    case_id: str,
+    user_id: Optional[str],
+    original_filename: str,
+    minio_path: str,
+    md_minio_path: Optional[str],
+    conversion_status: str,
+) -> CaseDocument:
+    """Insert a case document record and return the Pydantic model."""
+    from uuid_extensions import uuid7
+    try:
+        row = CaseDocumentDB(
+            id=str(uuid7()),
+            case_id=case_id,
+            user_id=user_id,
+            original_filename=original_filename,
+            minio_path=minio_path,
+            md_minio_path=md_minio_path,
+            conversion_status=conversion_status,
+            uploaded_at=datetime.now(timezone.utc),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return CaseDocument.model_validate(row)
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'Database error: {e!s}') from e

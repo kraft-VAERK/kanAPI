@@ -123,17 +123,19 @@ export function CaseEditForm({ c, caseId, isAdmin, onSaved }) {
   return (
     <form className="case-edit-form" onSubmit={handleSave}>
       <div className="case-detail-row">
-        <label className="case-detail-label" htmlFor="edit-status">Status</label>
-        <select
-          id="edit-status"
-          className="case-detail-value"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
+        <span className="case-detail-label">Status</span>
+        <div className="status-picker">
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <button
+              key={s}
+              type="button"
+              className={`status-pill status-pill--${s}${status === s ? " status-pill--active" : ""}`}
+              onClick={() => setStatus(s)}
+            >
+              {s.replace("_", " ")}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
       <div className="case-detail-row" style={{ position: "relative" }}>
         <label className="case-detail-label" htmlFor="edit-customer">Customer</label>

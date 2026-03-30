@@ -569,6 +569,46 @@ tbody tr.clickable:hover { background: var(--bg-hover-accent); }
 
 .modal h3 { font-size: 1rem; margin-bottom: 0.25rem; }
 
+.md-viewer-modal {
+  width: 720px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modal-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-viewer-content {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  font-family: inherit;
+}
+
 .modal form {
   display: flex;
   flex-direction: column;
@@ -964,4 +1004,40 @@ tbody tr.clickable:hover { background: var(--bg-hover-accent); }
 @media (max-width: 600px) {
   .customer-info-grid { grid-template-columns: 1fr; }
   .customer-stats { gap: 1.5rem; }
+}
+
+/* ─── Status pill picker (edit form) ─── */
+.status-picker {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.status-pill {
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: capitalize;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  letter-spacing: 0.01em;
+}
+
+.status-pill:hover:not(.status-pill--active) {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.status-pill--active {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border-color: var(--btn-bg);
+  font-weight: 600;
+  cursor: default;
 }

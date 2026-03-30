@@ -25,7 +25,10 @@ from .v1.auth.auth import limiter  # noqa: E402
 from .v1.auth.auth import router as auth_v1_router  # noqa: E402
 from .v1.auth.fga import close_fga_client  # noqa: E402
 from .v1.case.case import router as case_v1_router  # noqa: E402
-from .v1.case.models import CaseActivityDB  # noqa: E402, F401
+from .v1.case.models import (  # noqa: E402, F401
+    CaseActivityDB,
+    CaseDocumentDB,
+)
 from .v1.case.storage import ensure_bucket  # noqa: E402
 from .v1.company import router as company_v1_router  # noqa: E402
 from .v1.company.models import CompanyDB  # noqa: E402, F401

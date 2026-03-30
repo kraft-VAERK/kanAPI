@@ -5,10 +5,16 @@ including functions to get cases by ID and generate fake case data.
 """
 
 import http
+import logging
+import os
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query  # type: ignore
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile  # type: ignore
 from fastapi.responses import StreamingResponse
+from markitdown import MarkItDown
 from sqlalchemy.orm import Session
 from uuid_extensions import uuid7
 
@@ -22,9 +28,11 @@ from .models import (
     CaseActivity,
     CaseCreate,
     CaseDB,
+    CaseDocument,
     CaseUpdate,
     DocumentInfo,
     db_create_case,
+    db_create_case_document,
     db_delete_case,
     db_get_case,
     db_get_case_activities,
@@ -32,7 +40,33 @@ from .models import (
     db_search_cases_by_user,
     db_update_case,
 )
-from .storage import delete_case_document, delete_case_documents, list_case_documents, stream_case_document
+from .storage import (
+    _sanitize_filename,
+    delete_case_document,
+    delete_case_documents,
+    list_case_documents,
+    stream_case_document,
+    upload_case_document,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _format_markdown(text: str) -> str:
+    """Run rumdl fmt on a markdown string and return the formatted result."""
+    try:
+        result = subprocess.run(
+            ['rumdl', 'fmt', '-'],
+            input=text,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout
+    except Exception:
+        logger.warning('rumdl formatting failed, using raw markdown')
+        return text
+
 
 router = APIRouter(prefix="/case", tags=["case"])
 
@@ -263,6 +297,53 @@ async def get_case_documents(
     """Return metadata for all documents stored in MinIO under cases/{case_id}/."""
     _get_case_db_or_404(db, case_id)
     return list_case_documents(case_id)
+
+
+@router.post(
+    '/{case_id}/documents',
+    response_model=CaseDocument,
+    status_code=http.HTTPStatus.CREATED,
+    summary='Upload a PDF document and convert it to Markdown',
+)
+async def upload_case_document_endpoint(
+    case_id: str,
+    file: UploadFile,
+    db: DbSession,
+    current_user: Annotated[User, Depends(require_permission('editor'))],
+) -> CaseDocument:
+    """Upload a PDF to MinIO, convert it to Markdown via markitdown, and record both in the DB."""
+    if file.content_type != 'application/pdf':
+        raise HTTPException(status_code=http.HTTPStatus.UNPROCESSABLE_ENTITY, detail='Only PDF files are accepted.')
+    _get_case_db_or_404(db, case_id)
+    data = await file.read()
+    try:
+        safe_name = _sanitize_filename(file.filename or 'upload.pdf')
+    except ValueError as e:
+        raise HTTPException(status_code=http.HTTPStatus.BAD_REQUEST, detail=str(e)) from e
+
+    pdf_key = upload_case_document(case_id, safe_name, data, 'application/pdf')
+
+    md_key = None
+    conversion_status = 'failed'
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        result = MarkItDown().convert(tmp_path)
+        md_content = _format_markdown(result.text_content).encode('utf-8')
+        stem = Path(safe_name).stem
+        md_key = upload_case_document(case_id, f'{stem}.md', md_content, 'text/markdown')
+        conversion_status = 'success'
+    except Exception:
+        logger.exception('markitdown conversion failed for %s / %s', case_id, safe_name)
+    finally:
+        if tmp_path:
+            os.unlink(tmp_path)
+
+    doc = db_create_case_document(db, case_id, current_user.username, safe_name, pdf_key, md_key, conversion_status)
+    db_log_activity(db, case_id, current_user.username, 'document_uploaded', safe_name)
+    return doc
 
 
 @router.delete(

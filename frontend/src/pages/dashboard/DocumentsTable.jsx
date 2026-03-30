@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { formatBytes } from "./utils";
 
-export function DocumentsTable({ docs, onDownload, onDelete }) {
+export function DocumentsTable({ docs, onView, onDownload, onDelete, onViewMarkdown }) {
   const [confirming, setConfirming] = useState(null); // filename pending confirm
 
   return (
@@ -17,13 +17,22 @@ export function DocumentsTable({ docs, onDownload, onDelete }) {
       <tbody>
         {docs.map((d) => (
           <tr key={d.name}>
-            <td>{d.name}</td>
+            <td>
+              {onView ? (
+                <button className="link-btn" onClick={() => onView(d.name)}>{d.name}</button>
+              ) : d.name}
+            </td>
             <td>{formatBytes(d.size)}</td>
             <td>{new Date(d.last_modified).toLocaleDateString()}</td>
             <td style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <button className="link-btn" onClick={() => onDownload(d.name)}>
                 Download
               </button>
+              {d.has_markdown && onViewMarkdown && (
+                <button className="link-btn" onClick={() => onViewMarkdown(d.name)}>
+                  View MD
+                </button>
+              )}
               {onDelete && (
                 confirming === d.name ? (
                   <>
