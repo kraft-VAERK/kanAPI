@@ -113,6 +113,8 @@ class Case(pydantic.BaseModel):
 
     """
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     deleted: bool = False
     responsible_person: str
@@ -153,17 +155,7 @@ def db_create_case(db: Session, case: CaseCreate, user_id: str, case_id: str) ->
         db.add(db_case)
         db.commit()
         db.refresh(db_case)
-        return Case(
-            id=db_case.id,
-            responsible_person=db_case.responsible_person,
-            responsible_user_id=db_case.responsible_user_id,
-            status=db_case.status,
-            customer=db_case.customer,
-            archived=db_case.archived,
-            company_id=db_case.company_id,
-            created_at=db_case.created_at,
-            updated_at=db_case.updated_at,
-        )
+        return Case.model_validate(db_case)
     except SQLAlchemyError as e:
         db.rollback()
         logger.exception("Database error: %s", e)
@@ -182,19 +174,7 @@ def db_get_case(db: Session, case_id: str) -> Optional[Case]:
 
     """
     db_case = db.query(CaseDB).filter(CaseDB.id == case_id).first()
-    if db_case:
-        return Case(
-            id=db_case.id,
-            responsible_person=db_case.responsible_person,
-            responsible_user_id=db_case.responsible_user_id,
-            status=db_case.status,
-            customer=db_case.customer,
-            archived=db_case.archived,
-            company_id=db_case.company_id,
-            created_at=db_case.created_at,
-            updated_at=db_case.updated_at,
-        )
-    return None
+    return Case.model_validate(db_case) if db_case else None
 
 
 def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
@@ -210,20 +190,7 @@ def db_get_cases(db: Session, skip: int = 0, limit: int = 100) -> List[Case]:
 
     """
     db_cases = db.query(CaseDB).offset(skip).limit(limit).all()
-    return [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            responsible_user_id=c.responsible_user_id,
-            status=c.status,
-            customer=c.customer,
-            archived=c.archived,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    return [Case.model_validate(c) for c in db_cases]
 
 
 def db_update_case(
@@ -250,16 +217,7 @@ def db_update_case(
                 setattr(db_case, key, value)
             db.commit()
             db.refresh(db_case)
-            return Case(
-                id=db_case.id,
-                responsible_person=db_case.responsible_person,
-                status=db_case.status,
-                customer=db_case.customer,
-                archived=db_case.archived,
-                company_id=db_case.company_id,
-                created_at=db_case.created_at,
-                updated_at=db_case.updated_at,
-            )
+            return Case.model_validate(db_case)
         return None
     except SQLAlchemyError as e:
         db.rollback()
@@ -279,20 +237,7 @@ def db_get_cases_by_user(db: Session, user_id: str) -> List[Case]:
 
     """
     db_cases = db.query(CaseDB).filter(CaseDB.user_id == user_id).all()
-    return [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            responsible_user_id=c.responsible_user_id,
-            status=c.status,
-            customer=c.customer,
-            archived=c.archived,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    return [Case.model_validate(c) for c in db_cases]
 
 
 def _apply_case_filters(
@@ -343,40 +288,13 @@ def db_search_cases_by_user(
     else:
         query = db.query(CaseDB).filter(CaseDB.user_id == user_id)
     query = _apply_case_filters(query, q=q, status=status, archived=archived)
-    db_cases = query.all()
-    return [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            responsible_user_id=c.responsible_user_id,
-            status=c.status,
-            customer=c.customer,
-            archived=c.archived,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    return [Case.model_validate(c) for c in query.all()]
 
 
 def db_get_cases_by_responsible_user(db: Session, user_id: str) -> List[Case]:
     """Get all cases where the given user is the responsible person."""
     db_cases = db.query(CaseDB).filter(CaseDB.responsible_user_id == user_id).all()
-    return [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            responsible_user_id=c.responsible_user_id,
-            status=c.status,
-            customer=c.customer,
-            archived=c.archived,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    return [Case.model_validate(c) for c in db_cases]
 
 
 def db_delete_case(db: Session, case_id: str) -> bool:

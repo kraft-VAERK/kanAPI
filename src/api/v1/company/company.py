@@ -29,7 +29,7 @@ CurrentUser = Annotated[User, Depends(get_current_user_from_cookie)]
 
 
 def _require_super_admin(user: User) -> None:
-    if not user.is_admin or user.parent_id is not None:
+    if not user.is_super_admin:
         raise HTTPException(
             status_code=http.HTTPStatus.FORBIDDEN,
             detail='Super admin access required.',
@@ -37,7 +37,7 @@ def _require_super_admin(user: User) -> None:
 
 
 def _require_company_admin(user: User) -> None:
-    if not user.is_admin or user.parent_id is None:
+    if not user.is_company_admin:
         raise HTTPException(
             status_code=http.HTTPStatus.FORBIDDEN,
             detail='Company admin access required.',
@@ -112,19 +112,7 @@ async def get_my_company_cases(
     all_user_ids = [current_user.username, *sub_user_ids]
     query = db.query(CaseDB).filter(CaseDB.user_id.in_(all_user_ids))
     query = _apply_case_filters(query, q=q, status=status, archived=archived)
-    db_cases = query.all()
-    return [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            status=c.status,
-            customer=c.customer,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    return [Case.model_validate(c) for c in query.all()]
 
 
 @router.get('/{company_id}', response_model=Company, status_code=http.HTTPStatus.OK)
@@ -164,7 +152,7 @@ async def get_company_cases(
     archived: Optional[bool] = Query(default=None, description='Filter by archived state'),
 ) -> list[Case]:
     """Return cases for this company. Super admins see client-company cases too; others are FGA-filtered."""
-    is_super = current_user.is_admin and not current_user.parent_id
+    is_super = current_user.is_super_admin
     if is_super:
         client_ids = [r.id for r in db.query(CompanyDB).filter(CompanyDB.owner_id == company_id).all()]
         all_ids = [company_id, *client_ids]
@@ -172,20 +160,7 @@ async def get_company_cases(
     else:
         query = db.query(CaseDB).filter(CaseDB.company_id == company_id)
     query = _apply_case_filters(query, q=q, status=status, archived=archived)
-    db_cases = query.all()
-    cases = [
-        Case(
-            id=c.id,
-            responsible_person=c.responsible_person,
-            responsible_user_id=c.responsible_user_id,
-            status=c.status,
-            customer=c.customer,
-            company_id=c.company_id,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-        )
-        for c in db_cases
-    ]
+    cases = [Case.model_validate(c) for c in query.all()]
     if not is_super:
         cases = await filter_by_permission(cases, current_user.username)
     return cases

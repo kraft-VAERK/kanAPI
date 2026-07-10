@@ -113,13 +113,25 @@ class User(pydantic.BaseModel):
         """Hash function for the User model."""
         return hash((self.username, self.email, self.full_name, self.is_active))
 
-    def hash_password(self, password: str) -> str:
+    @property
+    def is_super_admin(self) -> bool:
+        """True for super admins (admin with no parent)."""
+        return bool(self.is_admin) and self.parent_id is None
+
+    @property
+    def is_company_admin(self) -> bool:
+        """True for company admins (admin with a parent)."""
+        return bool(self.is_admin) and self.parent_id is not None
+
+    @staticmethod
+    def hash_password(password: str) -> str:
         """Hash the password using bcrypt."""
         import bcrypt
 
         return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-    def validate_password(self, password: str, db_password: str) -> bool:
+    @staticmethod
+    def validate_password(password: str, db_password: str) -> bool:
         """Validate the provided password against the stored hashed password."""
         import bcrypt
 
@@ -137,15 +149,6 @@ class UserCreate(pydantic.BaseModel):
     full_name: Optional[str] = Field(default=None, max_length=255)
     is_admin: Optional[bool] = False
     parent_id: Optional[str] = None
-
-
-class UserDelete(pydantic.BaseModel):
-    """Pydantic model for deleting a User."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    username: Optional[str] = None
-    email: Optional[str] = None
 
 
 class UserUpdate(pydantic.BaseModel):
@@ -212,7 +215,7 @@ def db_update_user(db: Session, username: str, user_update: UserUpdate) -> Optio
 
         updates = user_update.model_dump(exclude_none=True)
         if "password" in updates:
-            updates["password"] = User.hash_password(User, updates["password"])
+            updates["password"] = User.hash_password(updates["password"])
 
         for field, value in updates.items():
             setattr(user_db, field, value)
@@ -244,7 +247,7 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
             username=username,
             email=user_create.email,
             full_name=user_create.full_name,
-            password=User.hash_password(User, user_create.password),
+            password=User.hash_password(user_create.password),
             is_active=True,
             is_admin=user_create.is_admin,
             parent_id=user_create.parent_id,
@@ -258,27 +261,3 @@ def db_create_user(db: Session, user_create: UserCreate) -> "User":
     except Exception:
         db.rollback()
         raise
-    finally:
-        db.close()
-
-
-def db_delete_user(db: Session, user_delete: UserDelete) -> bool:
-    """Delete a user from the database."""
-    if not user_delete.username and not user_delete.email:
-        raise ValueError("username or email must be provided")
-    try:
-        if user_delete.email:
-            user_db = db.query(UserDB).filter(UserDB.email == user_delete.email).first()
-        else:
-            user_db = db.query(UserDB).filter(UserDB.username == user_delete.username).first()
-        if not user_db:
-            return False
-
-        db.delete(user_db)
-        db.commit()
-        return True
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()

@@ -1,11 +1,14 @@
 """user.py - FastAPI router for user-related endpoints."""
 
+import http
 from typing import Annotated, List
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.api.db.database import get_db
+from src.api.v1.auth.auth import get_current_user_from_cookie
 
 from .models import (
     User,
@@ -15,7 +18,6 @@ from .models import (
     UserPublic,
     UserUpdate,
     db_create_user,
-    db_delete_user,
     db_get_user_changelog,
     db_log_user_changes,
     db_update_user,
@@ -23,66 +25,35 @@ from .models import (
 
 router = APIRouter(prefix="/user", tags=["User"])
 
-
-async def get_user_from_cookie(
-    db: Annotated[Session, Depends(get_db)],
-    session: Annotated[str | None, Cookie()] = None,
-) -> User:
-    """Lazy wrapper to avoid circular import with auth module."""
-    from src.api.v1.auth.auth import get_current_user_from_cookie
-
-    return await get_current_user_from_cookie(db=db, session=session)
+DbSession = Annotated[Session, Depends(get_db)]
+CurrentUser = Annotated[User, Depends(get_current_user_from_cookie)]
 
 
-@router.post("/create", response_model=UserPublic)
+@router.post("/create", response_model=UserPublic, status_code=http.HTTPStatus.CREATED)
 async def create_user(
     user: UserCreate,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> User:
     """Create a new user. Requires admin."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail='Only admins can create users.')
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail='Only admins can create users.')
 
-    is_super_admin = current_user.is_admin and not current_user.parent_id
-    if not is_super_admin:
+    if not current_user.is_super_admin:
         # Company admins can only create sub-users under themselves
         if user.is_admin:
-            raise HTTPException(status_code=403, detail='Company admins cannot create admin users.')
+            raise HTTPException(
+                status_code=http.HTTPStatus.FORBIDDEN,
+                detail='Company admins cannot create admin users.',
+            )
         user.parent_id = current_user.username
 
     try:
-        new_user = db_create_user(db=db, user_create=user)
-        return new_user
-    except Exception as e:
+        return db_create_user(db=db, user_create=user)
+    except IntegrityError as e:
         raise HTTPException(
-            status_code=500,
-            detail="Error creating user",
-        ) from e
-
-
-@router.get("/delete", response_model=bool)
-async def delete_user(
-    user_delete: User,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
-) -> bool:
-    """Delete a user by user_id or email. Requires admin."""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail='Only admins can delete users.')
-
-    try:
-        deleted = db_delete_user(db=db, user_delete=user_delete)
-        if not deleted:
-            raise HTTPException(
-                status_code=404,
-                detail="User not found",
-            )
-        return True
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail="Error deleting user",
+            status_code=http.HTTPStatus.CONFLICT,
+            detail="A user with this username or email already exists.",
         ) from e
 
 
@@ -90,87 +61,80 @@ async def delete_user(
 async def update_user(
     user_id: str,
     user_update: UserUpdate,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> User:
     """Update a user's fields. Requires admin or super admin."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail='Only admins can update user information.')
-    is_super_admin = current_user.is_admin and not current_user.parent_id
-    if not is_super_admin:
-        is_self = current_user.username == user_id
-        if not is_self:
-            target = db.query(UserDB).filter(UserDB.username == user_id).first()
-            if not target or target.parent_id != current_user.username:
-                raise HTTPException(status_code=403, detail='You can only update users you manage.')
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail='Only admins can update user information.')
+    if not current_user.is_super_admin and current_user.username != user_id:
+        target = db.query(UserDB).filter(UserDB.username == user_id).first()
+        if not target or target.parent_id != current_user.username:
+            raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail='You can only update users you manage.')
 
     before = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not before:
-        raise HTTPException(status_code=404, detail='User not found.')
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='User not found.')
 
     updates = user_update.model_dump(exclude_none=True)
     db_log_user_changes(db=db, target_user=user_id, changed_by=current_user.username, before=before, updates=updates)
 
     result = db_update_user(db=db, username=user_id, user_update=user_update)
     if not result:
-        raise HTTPException(status_code=404, detail='User not found.')
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail='User not found.')
     return result
 
 
 @router.get("/all", response_model=List[UserPublic])
 async def get_all_users(
-    _current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> List[User]:
     """Get all users. Scoped by role: super admin sees all, others see own company."""
-    try:
-        is_super_admin = _current_user.is_admin and not _current_user.parent_id
-        if is_super_admin:
-            users = db.query(UserDB).all()
-        elif _current_user.is_admin:
-            # Company admin: see self + own sub-users
-            users = db.query(UserDB).filter(
-                (UserDB.username == _current_user.username) | (UserDB.parent_id == _current_user.username),
-            ).all()
-        else:
-            # Regular user: see users in same company (same parent)
-            users = db.query(UserDB).filter(
-                (UserDB.username == _current_user.parent_id) | (UserDB.parent_id == _current_user.parent_id),
-            ).all()
-        return [User.model_validate(user) for user in users]
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail="Error fetching users",
-        ) from e
+    if current_user.is_super_admin:
+        users = db.query(UserDB).all()
+    elif current_user.is_admin:
+        # Company admin: see self + own sub-users
+        users = db.query(UserDB).filter(
+            (UserDB.username == current_user.username) | (UserDB.parent_id == current_user.username),
+        ).all()
+    else:
+        # Regular user: see users in same company (same parent)
+        users = db.query(UserDB).filter(
+            (UserDB.username == current_user.parent_id) | (UserDB.parent_id == current_user.parent_id),
+        ).all()
+    return [User.model_validate(user) for user in users]
 
 
-@router.delete("/{user_id}", status_code=204)
+@router.delete("/{user_id}", status_code=http.HTTPStatus.NO_CONTENT)
 async def delete_user_by_id(
     user_id: str,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> None:
     """Delete a user by ID. Requires admin. Cannot delete yourself."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only admins can delete users.")
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail="Only admins can delete users.")
     if current_user.username == user_id:
-        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+        raise HTTPException(status_code=http.HTTPStatus.BAD_REQUEST, detail="You cannot delete your own account.")
     user_db = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not user_db:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail="User not found.")
     # Company admins can only delete their own sub-users
-    is_super_admin = current_user.is_admin and not current_user.parent_id
-    if not is_super_admin and user_db.parent_id != current_user.username:
-        raise HTTPException(status_code=403, detail="You can only delete users you manage.")
+    if not current_user.is_super_admin and user_db.parent_id != current_user.username:
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail="You can only delete users you manage.")
     from src.api.v1.case.models import CaseDB  # local import to avoid circular dependency
 
-    has_cases = db.query(CaseDB).filter(CaseDB.user_id == user_id).first() is not None
+    has_cases = (
+        db.query(CaseDB)
+        .filter((CaseDB.user_id == user_id) | (CaseDB.responsible_user_id == user_id))
+        .first()
+        is not None
+    )
     if has_cases:
         raise HTTPException(
-            status_code=409,
-            detail="Cannot delete user: \
-                            they have associated cases. Delete their cases first.",
+            status_code=http.HTTPStatus.CONFLICT,
+            detail="Cannot delete user: they have associated cases. Delete or reassign their cases first.",
         )
     db.delete(user_db)
     db.commit()
@@ -179,19 +143,21 @@ async def delete_user_by_id(
 @router.get("/{user_id}/cases", response_model=list)
 async def get_user_cases(
     user_id: str,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> list:
     """Get all cases for a user. Admins can view managed users; users can view their own."""
     if current_user.username != user_id:
         if not current_user.is_admin:
-            raise HTTPException(status_code=403, detail="You can only view your own cases.")
+            raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail="You can only view your own cases.")
         # Company admins can only view cases for their own sub-users
-        is_super_admin = current_user.is_admin and not current_user.parent_id
-        if not is_super_admin:
+        if not current_user.is_super_admin:
             target = db.query(UserDB).filter(UserDB.username == user_id).first()
             if not target or target.parent_id != current_user.username:
-                raise HTTPException(status_code=403, detail="You can only view cases for users you manage.")
+                raise HTTPException(
+                    status_code=http.HTTPStatus.FORBIDDEN,
+                    detail="You can only view cases for users you manage.",
+                )
     from src.api.v1.case.models import db_get_cases_by_responsible_user  # local import to avoid circular dependency
 
     return db_get_cases_by_responsible_user(db=db, user_id=user_id)
@@ -200,26 +166,25 @@ async def get_user_cases(
 @router.get("/{user_id}/changelog", response_model=list[UserChangelog])
 async def get_user_changelog(
     user_id: str,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> list[UserChangelog]:
     """Return field-level changelog for a user. Super admin only."""
-    is_super_admin = current_user.is_admin and not current_user.parent_id
-    if not is_super_admin:
-        raise HTTPException(status_code=403, detail='Super admin access required.')
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail='Super admin access required.')
     return db_get_user_changelog(db=db, username=user_id)
 
 
 @router.get("/{user_id}", response_model=UserPublic)
 async def get_user(
     user_id: str,
-    current_user: Annotated[User, Depends(get_user_from_cookie)],
-    db: Session = Depends(get_db),  # noqa: B008
+    current_user: CurrentUser,
+    db: DbSession,
 ) -> User:
     """Get a user by ID. Requires admin."""
     if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only admins can view user profiles.")
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail="Only admins can view user profiles.")
     user_db = db.query(UserDB).filter(UserDB.username == user_id).first()
     if not user_db:
-        raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=http.HTTPStatus.NOT_FOUND, detail="User not found.")
     return User.model_validate(user_db)

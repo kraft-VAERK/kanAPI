@@ -300,3 +300,29 @@ def test_company_cases_q_no_match(search_scenario) -> None:  # noqa: ANN001
     s = search_scenario
     cases = _super_admin_company_cases(s["db"], s["owner_co"], q="zzz_no_match")
     assert len(cases) == 0
+
+
+# ─── Case serialization regression ────────────────────────────────────────────
+
+
+def test_case_model_validate_preserves_all_fields(search_scenario) -> None:  # noqa: ANN001
+    """Case.model_validate must not drop archived/responsible_user_id (regression).
+
+    Company endpoints previously hand-mapped CaseDB → Case and silently omitted
+    archived and responsible_user_id, breaking the archived filter display and
+    the "Responsible" toggle for company admins.
+    """
+    from src.api.v1.case.models import Case
+
+    s = search_scenario
+    row = s["db"].query(CaseDB).filter(CaseDB.id == s["case_ids"][3]).first()
+    row.responsible_user_id = s["sub2"]
+    s["db"].flush()
+
+    case = Case.model_validate(row)
+    assert case.archived is True
+    assert case.responsible_user_id == s["sub2"]
+    assert case.id == row.id
+    assert case.company_id == row.company_id
+    assert case.status == row.status
+    assert case.customer == row.customer

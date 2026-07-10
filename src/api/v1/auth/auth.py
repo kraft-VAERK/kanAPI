@@ -5,7 +5,7 @@ This module provides functions for authenticating users and managing JWT tokens.
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 import jwt
@@ -69,6 +69,26 @@ class LoginRequest(BaseModel):
     password: str
 
 
+def _issue_session_cookie(response: Response, user: User) -> str:
+    """Create an access token for the user and set it as the session cookie."""
+    expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username, "email": user.email},
+        expires_delta=expires,
+    )
+    max_age = int(expires.total_seconds())
+    response.set_cookie(
+        key="session",
+        value=access_token,
+        httponly=True,
+        max_age=max_age,
+        expires=max_age,
+        samesite="lax",
+        secure=_SECURE_COOKIES,
+    )
+    return access_token
+
+
 def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     """Authenticate a user by email and password.
 
@@ -109,9 +129,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -236,24 +256,7 @@ async def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username, "email": user.email},
-        expires_delta=access_token_expires,
-    )
-
-    # Set cookie for authentication
-    cookie_expires = int(access_token_expires.total_seconds())
-    response.set_cookie(
-        key="session",
-        value=access_token,
-        httponly=True,
-        max_age=cookie_expires,
-        expires=cookie_expires,
-        samesite="lax",
-        secure=_SECURE_COOKIES,
-    )
-
+    access_token = _issue_session_cookie(response, user)
     return Token(access_token=access_token, token_type="bearer")
 
 
@@ -287,24 +290,7 @@ async def login(
             detail="Incorrect email or password",
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username, "email": user.email},
-        expires_delta=access_token_expires,
-    )
-
-    # Set cookie for authentication
-    cookie_expires = int(access_token_expires.total_seconds())
-    response.set_cookie(
-        key="session",
-        value=access_token,
-        httponly=True,
-        max_age=cookie_expires,
-        expires=cookie_expires,
-        samesite="lax",
-        secure=_SECURE_COOKIES,
-    )
-
+    _issue_session_cookie(response, user)
     return {"message": "Login successful"}
 
 

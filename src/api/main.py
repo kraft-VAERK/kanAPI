@@ -30,11 +30,11 @@ from .v1.case.models import (  # noqa: E402, F401
     CaseDocumentDB,
 )
 from .v1.case.storage import ensure_bucket  # noqa: E402
-from .v1.company import router as company_v1_router  # noqa: E402
+from .v1.company.company import router as company_v1_router  # noqa: E402
 from .v1.company.models import CompanyDB  # noqa: E402, F401
-from .v1.customer import router as customer_v1_rounter  # noqa: E402
-from .v1.user import router as user_v1_router  # noqa: E402
+from .v1.customer.customer import router as customer_v1_router  # noqa: E402
 from .v1.user.models import UserChangelogDB  # noqa: E402, F401
+from .v1.user.user import router as user_v1_router  # noqa: E402
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -72,7 +72,7 @@ app.include_router(health_router, prefix=prefix, tags=["health"])
 app.include_router(auth_v1_router, prefix=prefix, tags=["v1", "auth"])
 app.include_router(case_v1_router, prefix=prefix, tags=["v1", "case"])
 app.include_router(company_v1_router, prefix=prefix, tags=["v1", "company"])
-app.include_router(customer_v1_rounter, prefix=prefix, tags=["v1", "customer"])
+app.include_router(customer_v1_router, prefix=prefix, tags=["v1", "customer"])
 app.include_router(user_v1_router, prefix=prefix, tags=["v1", "user"])
 app.include_router(audit_v1_router, prefix=prefix, tags=["v1", "audit"])
 app.get("/api", include_in_schema=False)(lambda: {"message": "Welcome to kanAPI!"})

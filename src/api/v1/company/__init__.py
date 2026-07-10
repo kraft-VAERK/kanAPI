@@ -1,5 +1,1 @@
-"""Company module."""
-
-from .company import router
-
-__all__ = ["router"]
+"""Company module for API v1."""

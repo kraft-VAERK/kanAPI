@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http
 import re
 from pathlib import Path
 from typing import Annotated, Optional
@@ -83,8 +84,8 @@ async def get_audit_logs(
     limit: int = Query(default=100, le=1000),
 ) -> list[AuditEntry]:
     """Return parsed audit log entries. Super admin only."""
-    if not current_user.is_admin or current_user.parent_id:
-        raise HTTPException(status_code=403, detail="Super admin access required.")
+    if not current_user.is_super_admin:
+        raise HTTPException(status_code=http.HTTPStatus.FORBIDDEN, detail="Super admin access required.")
 
     entries = _read_all_logs()
 
