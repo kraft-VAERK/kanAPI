@@ -28,9 +28,12 @@ export function CaseDetailPage({ caseId, editMode, user }) {
     fetch(`${API}/case/${caseId}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        setC(data);
+        // Keep the router-state preloaded case if the refresh fetch fails
+        // (e.g. admins viewing sub-user cases without a direct FGA tuple).
+        if (data) setC(data);
         setLoadingCase(false);
-      });
+      })
+      .catch(() => setLoadingCase(false));
     fetch(`${API}/case/${caseId}/documents`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
@@ -63,6 +66,7 @@ export function CaseDetailPage({ caseId, editMode, user }) {
     const res = await fetch(`${API}/case/${caseId}/documents/${filename}`, {
       credentials: "include",
     });
+    if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
@@ -72,6 +76,7 @@ export function CaseDetailPage({ caseId, editMode, user }) {
     const res = await fetch(`${API}/case/${caseId}/documents/${filename}`, {
       credentials: "include",
     });
+    if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

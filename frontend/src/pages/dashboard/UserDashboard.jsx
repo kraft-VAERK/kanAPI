@@ -7,6 +7,8 @@ import { CaseSearchBar } from "./CaseSearchBar";
 import { CustomersTable } from "./CustomersTable";
 import { Pagination } from "./Pagination";
 import { CreateCaseModal } from "./CreateCaseModal";
+import { useDebouncedValue, usePagination } from "./hooks";
+import { caseQueryString, deriveCustomers } from "./utils";
 
 export function UserDashboard({ user }) {
   const { customer: rawCustomer } = useParams();
@@ -18,26 +20,16 @@ export function UserDashboard({ user }) {
     : "cases";
 
   const [cases, setCases] = useState([]);
-  const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchArchived, setSearchArchived] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
   const [myResponsible, setMyResponsible] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQ), 300);
-    return () => clearTimeout(t);
-  }, [searchQ]);
+  const debouncedQ = useDebouncedValue(searchQ);
+  const [page, setPage] = usePagination([tab, customer, debouncedQ, searchStatus, searchArchived, myResponsible]);
 
   function fetchCases(q, status, archived) {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (status) params.set("status", status);
-    if (archived !== "") params.set("archived", archived);
-    const qs = params.toString();
-    fetch(`${API}/case/${qs ? `?${qs}` : ""}`, { credentials: "include" })
+    fetch(`${API}/case/${caseQueryString(q, status, archived)}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setCases);
   }
@@ -46,16 +38,7 @@ export function UserDashboard({ user }) {
     fetchCases(debouncedQ, searchStatus, searchArchived);
   }, [debouncedQ, searchStatus, searchArchived]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [tab, customer, debouncedQ, searchStatus, searchArchived, myResponsible]);
-
-  const customerMap = {};
-  for (const c of cases) {
-    if (!customerMap[c.customer]) customerMap[c.customer] = { name: c.customer, count: 0 };
-    customerMap[c.customer].count += 1;
-  }
-  const customers = Object.values(customerMap);
+  const customers = deriveCustomers(cases);
 
   const filteredCases = myResponsible
     ? cases.filter((c) => c.responsible_user_id === user?.username)

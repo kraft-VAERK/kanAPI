@@ -21,13 +21,13 @@ export default function Register() {
     })
 
     if (res.ok) {
-      await fetch(`${API}/auth/login`, {
+      const loginRes = await fetch(`${API}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
-      navigate('/dashboard', { replace: true })
+      navigate(loginRes.ok ? '/dashboard' : '/', { replace: true })
     } else {
       const data = await res.json().catch(() => ({}))
       setError(data.detail || 'Registration failed')

@@ -13,10 +13,15 @@ import { UserProfileView } from "./dashboard/UserProfileView";
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
-  const [toast, setToast] = useState(null);
+  const [dismissedToastKey, setDismissedToastKey] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { caseId, userId, companyId } = useParams();
+
+  // Toast derived from router state (rerender-derived-state-no-effect);
+  // location.key uniquely identifies the navigation that carried it.
+  const toastKey = location.state?.toast ? location.key : null;
+  const toast = toastKey && toastKey !== dismissedToastKey ? location.state.toast : null;
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: "include" })
@@ -30,16 +35,13 @@ export default function Dashboard() {
       .catch(() => navigate("/", { replace: true }));
   }, [navigate]);
 
-  // Pick up toast from router state and clear it
+  // Auto-dismiss the toast and clear state so refreshing doesn't re-show it
   useEffect(() => {
-    if (location.state?.toast) {
-      setToast(location.state.toast);
-      // Clear state so refreshing doesn't re-show
-      window.history.replaceState({}, "");
-      const t = setTimeout(() => setToast(null), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [location.state?.toast]);
+    if (!toastKey) return;
+    window.history.replaceState({}, "");
+    const t = setTimeout(() => setDismissedToastKey(toastKey), 3000);
+    return () => clearTimeout(t);
+  }, [toastKey]);
 
   async function handleLogout() {
     await fetch(`${API}/auth/logout`, {
@@ -73,13 +75,18 @@ export default function Dashboard() {
 
   const header = (
     <header className="dashboard-header">
-      <span className="header-name" onClick={() => navigate("/dashboard/profile")}>{user.full_name || user.username}</span>
+      <span className="header-brand" onClick={() => navigate("/dashboard")}>
+        <span className="header-brand-logo">🐭</span>
+        kanAPI
+      </span>
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
         {toast && <span className="toast-success">{toast}</span>}
+        <span className="header-name" onClick={() => navigate("/dashboard/profile")}>
+          {user.full_name || user.username}
+        </span>
         <button className="theme-toggle" onClick={toggleTheme} title={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
           {dark ? '\u2600' : '\u263E'}
         </button>
-        <button onClick={() => navigate("/dashboard/profile")}>Profile</button>
         <button onClick={handleLogout}>Logout</button>
       </div>
     </header>

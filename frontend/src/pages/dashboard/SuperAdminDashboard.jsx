@@ -8,6 +8,8 @@ import { CustomersTable } from "./CustomersTable";
 import { Pagination } from "./Pagination";
 import { CreateCaseModal } from "./CreateCaseModal";
 import { CreateCompanyModal } from "./CreateCompanyModal";
+import { useDebouncedValue, usePagination } from "./hooks";
+import { caseQueryString } from "./utils";
 
 export function SuperAdminDashboard() {
   const { companyId, customer: rawCustomer } = useParams();
@@ -107,14 +109,14 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
   const [cases, setCases] = useState([]);
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
-  const [page, setPage] = useState(1);
   const [showCreateCase, setShowCreateCase] = useState(false);
   const [deleteState, setDeleteState] = useState(null); // null | 'confirm' | 'deleting'
   const [deleteError, setDeleteError] = useState(null);
   const [searchQ, setSearchQ] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchArchived, setSearchArchived] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const debouncedQ = useDebouncedValue(searchQ);
+  const [page, setPage] = usePagination([activeTab, selectedCustomer, debouncedQ, searchStatus, searchArchived]);
   const navigate = useNavigate();
 
   async function handleDeleteCompany() {
@@ -138,11 +140,6 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
     }
   }
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQ), 300);
-    return () => clearTimeout(t);
-  }, [searchQ]);
-
   function deriveClients(fetchedCases) {
     const map = {};
     for (const c of fetchedCases) {
@@ -154,12 +151,7 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
   }
 
   function fetchCases(q, status, archived) {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (status) params.set("status", status);
-    if (archived !== "") params.set("archived", archived);
-    const qs = params.toString();
-    fetch(`${API}/company/${companyId}/cases${qs ? `?${qs}` : ""}`, {
+    fetch(`${API}/company/${companyId}/cases${caseQueryString(q, status, archived)}`, {
       credentials: "include",
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -188,10 +180,6 @@ function CompanyDetailView({ companyId, activeTab, selectedCustomer }) {
   useEffect(() => {
     fetchCases(debouncedQ, searchStatus, searchArchived);
   }, [companyId, debouncedQ, searchStatus, searchArchived]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab, selectedCustomer, debouncedQ, searchStatus, searchArchived]);
 
   async function reloadCases() {
     fetchCases(debouncedQ, searchStatus, searchArchived);

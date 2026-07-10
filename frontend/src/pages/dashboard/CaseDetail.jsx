@@ -1,8 +1,13 @@
 export function CaseDetail({ c }) {
   const fields = [
     ["Customer", c.customer],
+    [
+      "Status",
+      <span key="status" className={`status-badge status-badge--${c.status}`}>
+        {c.status.replace("_", " ")}
+      </span>,
+    ],
     ["Responsible", c.responsible_person],
-    ["Status", c.status],
     ["Created", new Date(c.created_at).toLocaleDateString()],
     [
       "Updated",

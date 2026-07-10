@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { API, PAGE_SIZE } from "./constants";
 import { Pagination } from "./Pagination";
+import { useDebouncedValue, usePagination } from "./hooks";
 
 const METHOD_COLORS = {
   GET:    { color: "var(--text-secondary)" },
@@ -18,32 +19,25 @@ function statusStyle(code) {
 }
 
 export function AuditLogView() {
-  const [logs, setLogs] = useState([]);
-  const [page, setPage] = useState(1);
+  // Loading state derived from whether results match the current filter —
+  // avoids setting state synchronously in the fetch effect.
+  const [result, setResult] = useState({ key: null, logs: [] });
   const [filterUser, setFilterUser] = useState("");
   const [filterMethod, setFilterMethod] = useState("");
-  const [debouncedUser, setDebouncedUser] = useState("");
-  const [loading, setLoading] = useState(false);
+  const debouncedUser = useDebouncedValue(filterUser);
+  const [page, setPage] = usePagination([debouncedUser, filterMethod]);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedUser(filterUser), 300);
-    return () => clearTimeout(t);
-  }, [filterUser]);
+  const logs = result.logs;
+  const loading = result.key !== debouncedUser;
 
   useEffect(() => {
-    setLoading(true);
     const params = new URLSearchParams({ limit: "500" });
     if (debouncedUser) params.set("user", debouncedUser);
     fetch(`${API}/audit/logs?${params}`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
-      .then(setLogs)
-      .finally(() => setLoading(false));
+      .then((data) => setResult({ key: debouncedUser, logs: data }));
   }, [debouncedUser]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedUser, filterMethod]);
 
   const visible = filterMethod
     ? logs.filter((l) => l.method === filterMethod)

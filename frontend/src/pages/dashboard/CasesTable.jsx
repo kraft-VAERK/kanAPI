@@ -29,7 +29,11 @@ export function CasesTable({ cases, onCaseClick, onCustomerClick }) {
               )}
             </td>
             <td>{c.responsible_person}</td>
-            <td>{c.status}</td>
+            <td>
+              <span className={`status-badge status-badge--${c.status}`}>
+                {c.status.replace("_", " ")}
+              </span>
+            </td>
             <td>{new Date(c.created_at).toLocaleDateString()}</td>
             <td>
               {onCaseClick && (

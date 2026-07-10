@@ -5,6 +5,8 @@ import { API, PAGE_SIZE } from "./constants";
 import { CasesTable } from "./CasesTable";
 import { CaseSearchBar } from "./CaseSearchBar";
 import { Pagination } from "./Pagination";
+import { useDebouncedValue, usePagination } from "./hooks";
+import { caseQueryString } from "./utils";
 
 export function CustomerProfilePage({ companyId, user }) {
   const location = useLocation();
@@ -14,17 +16,12 @@ export function CustomerProfilePage({ companyId, user }) {
   const [company, setCompany] = useState(null);
   const [loadingCompany, setLoadingCompany] = useState(true);
   const [allCases, setAllCases] = useState([]);
-  const [page, setPage] = useState(1);
 
   const [searchQ, setSearchQ] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchArchived, setSearchArchived] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQ), 300);
-    return () => clearTimeout(t);
-  }, [searchQ]);
+  const debouncedQ = useDebouncedValue(searchQ);
+  const [page, setPage] = usePagination([debouncedQ, searchStatus, searchArchived]);
 
   // Fetch company detail
   useEffect(() => {
@@ -38,14 +35,10 @@ export function CustomerProfilePage({ companyId, user }) {
 
   // Fetch cases — company admins use my-cases so all client companies are included
   function fetchCases(q, status, archived) {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (status) params.set("status", status);
-    if (archived !== "") params.set("archived", archived);
-    const qs = params.toString();
+    const qs = caseQueryString(q, status, archived);
     const url = isSuperAdmin
-      ? `${API}/company/${companyId}/cases${qs ? `?${qs}` : ""}`
-      : `${API}/company/my-cases${qs ? `?${qs}` : ""}`;
+      ? `${API}/company/${companyId}/cases${qs}`
+      : `${API}/company/my-cases${qs}`;
     fetch(url, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : []))
       .then(setAllCases);
@@ -56,11 +49,6 @@ export function CustomerProfilePage({ companyId, user }) {
   }, [companyId, debouncedQ, searchStatus, searchArchived]);
 
   const isSuperAdmin = user?.is_admin && !user?.parent_id;
-
-  // Reset page on filter change
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedQ, searchStatus, searchArchived]);
 
   const cases = customerName
     ? allCases.filter((c) => c.customer === customerName)

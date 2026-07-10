@@ -203,7 +203,6 @@ All endpoints under `/api/v1`.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/user/create` | cookie (admin) | Create a user |
-| GET | `/user/delete` | cookie (admin) | Delete a user (uses GET+body — legacy) |
 | PATCH | `/user/{user_id}` | cookie (admin) | Update a user |
 | DELETE | `/user/{user_id}` | cookie (admin) | Delete a user by ID |
 | GET | `/user/{user_id}/cases` | cookie | Get cases for a user |
@@ -485,7 +484,7 @@ Built-in classes that already include the base (no need to add `.btn`):
 | `.create-btn` | Filled + `margin-left: auto` | "+" buttons in section headings |
 | `.toggle-btn` | Outline; `.toggle-btn.active` → filled | Filter toggles (e.g. "Responsible") |
 | `.back-btn` | Outline | "← Back" navigation |
-| `.archive-btn` | Outline with `--text` border | Archive/Unarchive |
+| `.archive-btn` | Outline | Archive/Unarchive |
 | `.delete-btn` | Danger + `margin-left: auto` | Delete buttons |
 | `.view-all-activity-btn` | Outline + `display: block` | "View all" expand toggle |
 | `.link-btn` | Unstyled, underlined link color | Inline text links in tables |
@@ -504,7 +503,9 @@ Example — new button:
 
 Light/dark theme via `data-theme` attribute on root. All colors use CSS variables — never hardcode colors.
 
-Key variables: `--bg`, `--bg-card`, `--bg-hover`, `--bg-input`, `--text`, `--text-secondary`, `--text-muted`, `--text-faint`, `--border`, `--border-light`, `--btn-bg`, `--btn-bg-hover`, `--btn-text`, `--link`, `--link-hover`, `--error`, `--success`, `--delete-border`, `--delete-hover-bg`, `--shadow`, `--overlay`.
+Key variables: `--bg`, `--bg-card`, `--bg-hover`, `--bg-input`, `--text`, `--text-secondary`, `--text-muted`, `--text-faint`, `--border`, `--border-light`, `--btn-bg`, `--btn-bg-hover`, `--btn-text`, `--accent`, `--accent-soft`, `--focus-ring`, `--link`, `--link-hover`, `--error`, `--success`, `--delete-border`, `--delete-hover-bg`, `--shadow`, `--overlay`.
+
+Case statuses render as colored `.status-badge status-badge--<status>` pills (variables: `--status-<status>-bg` / `--status-<status>-text` for `open`, `pending`, `in_progress`, `closed`). Typography is Inter (loaded in `index.html`).
 
 ### Common frontend patterns
 
